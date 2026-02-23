@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 
-const fs = require('fs')
-const path = require('path')
-const project = path.join(__dirname, '../tsconfig.json')
-const dev = fs.existsSync(project)
+import fs from 'node:fs';
+import path from 'node:path';
 
-if (dev) {
-  require('ts-node').register({project})
-}
+const __dirname = import.meta.dirname;
+const project = path.join(__dirname, '../tsconfig.json');
+const dev = fs.existsSync(project);
 
-require(`../${dev ? 'src' : 'lib'}`).run()
-.catch(require('@oclif/errors/handle'))
+(async () => {
+  if (dev) {
+    // Tell oclif to resolve TypeScript source (it treats missing NODE_ENV as production)
+    process.env.NODE_ENV ??= 'development'
+    // Pre-register ts-node with ESM support for TypeScript source loading
+    const tsNode = await import('ts-node')
+    tsNode.register({project, esm: true})
+  }
+  const {run, handle} = await import('@oclif/core')
+  await run(process.argv.slice(2), import.meta.url).catch(handle)
+})();
