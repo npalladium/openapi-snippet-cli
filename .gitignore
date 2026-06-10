@@ -5,6 +5,7 @@
 /dist
 /lib
 /out
+/goals
 /package-lock.json
 /tmp
 node_modules

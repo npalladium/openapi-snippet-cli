@@ -1,2 +1,3 @@
 [tools]
-node = "20"
+# Active LTS line. Tested on Node 22 and 24. Floor is enforced by package.json#engines.
+node = "22"

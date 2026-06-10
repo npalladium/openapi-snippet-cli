@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const REPO_ROOT = new URL('..', import.meta.url).pathname
@@ -149,16 +149,49 @@ describe('package.json scripts', () => {
     assert.ok(scripts['check:fix']?.includes('--write'))
   })
 
-  it('exposes typecheck', () => {
-    assert.ok(scripts.typecheck?.includes('tsc'))
+  it('exposes typecheck using tsgo (native TypeScript compiler)', () => {
+    assert.ok(
+      scripts.typecheck?.includes('tsgo'),
+      `expected typecheck to use tsgo, got: ${scripts.typecheck}`,
+    )
   })
 
-  it('exposes a ci/verify script that chains check + typecheck + test', () => {
+  it('exposes a ci/verify script that chains check + typecheck + build + test', () => {
     const ci = scripts.verify ?? scripts.ci
     assert.ok(ci, 'expected a verify or ci script')
     assert.ok(ci.includes('check'))
     assert.ok(ci.includes('typecheck'))
+    assert.ok(ci.includes('build'))
     assert.ok(ci.includes('test'))
+  })
+
+  it('exposes build:js using esbuild', () => {
+    assert.ok(
+      scripts['build:js']?.includes('esbuild'),
+      `expected build:js to use esbuild, got: ${scripts['build:js']}`,
+    )
+  })
+
+  it('exposes build:types using tsc --emitDeclarationOnly', () => {
+    assert.ok(scripts['build:types']?.includes('--emitDeclarationOnly'))
+  })
+
+  it('does not declare unused oclif pack scripts', () => {
+    for (const key of ['pack:tarballs', 'pack:win', 'pack:macos', 'pack:deb']) {
+      assert.ok(!scripts[key], `expected ${key} to be removed`)
+    }
+  })
+})
+
+describe('engines', () => {
+  const pkg = loadJson(join(REPO_ROOT, 'package.json')) as JsonObject
+  const engines = pkg.engines as Record<string, string>
+
+  it('requires Node >=22', () => {
+    const node = engines.node ?? ''
+    const m = node.match(/>=(\d+)/)
+    assert.ok(m, `expected a >= constraint in engines.node, got: ${node}`)
+    assert.ok(Number(m[1]) >= 22, `engines.node floor should be >=22, got: ${node}`)
   })
 })
 
@@ -195,5 +228,25 @@ describe('gitignore', () => {
 
   it('ignores the out/ directory', () => {
     assert.match(gitignore, /^\/out$/m, 'expected /out in .gitignore')
+  })
+})
+
+describe('build pipeline', () => {
+  it('produces a non-empty dist/cli/index.js that is a valid ESM module', () => {
+    const distCli = join(REPO_ROOT, 'dist/cli/index.js')
+    if (!existsSync(distCli)) {
+      execFileSync('node', [join(REPO_ROOT, 'node_modules/.bin/pnpm'), 'build'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    }
+    const stat = statSync(distCli)
+    assert.ok(stat.size > 0, 'dist/cli/index.js should be non-empty')
+    const body = readFileSync(distCli, { encoding: 'utf8', flag: 'r' })
+    assert.ok(
+      body.includes('OpenapiSnippetCli') || body.includes('openapi-snippet'),
+      'dist/cli/index.js should reference the CLI class or command name',
+    )
   })
 })

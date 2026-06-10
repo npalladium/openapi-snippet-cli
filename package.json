@@ -3,15 +3,22 @@
   "description": "Adds openapi snippets using openapi-snippet module in redoc style",
   "version": "0.2.1",
   "author": "Richard Kabiling",
+  "type": "module",
   "bin": {
     "openapi-snippet": "./bin/run"
   },
-  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
+    }
+  },
   "bugs": "https://github.com/richardkabiling/openapi-snippet-cli/issues",
   "dependencies": {
     "@oclif/core": "^4",
     "@oclif/plugin-help": "^5",
     "@readme/openapi-parser": "^5.5.0",
+    "@stricli/core": "^1.2.7",
     "httpsnippet": "^3.0.9",
     "js-yaml": "^4.1.0",
     "lodash": "^4.17.15",
@@ -26,14 +33,16 @@
     "@types/lodash": "^4.17.20",
     "@types/mocha": "^10",
     "@types/node": "^20",
+    "@typescript/native-preview": "7.0.0-dev.20260610.1",
     "c8": "^10",
+    "esbuild": "^0.28.0",
     "mocha": "^10",
     "oclif": "^4.22.81",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "files": [
     "/bin",
@@ -69,6 +78,7 @@
       "-v"
     ]
   },
+  "types": "dist/cli/index.d.ts",
   "repository": "richardkabiling/openapi-snippet-cli",
   "scripts": {
     "lint": "biome lint .",
@@ -76,15 +86,13 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "typecheck": "tsc -b",
-    "verify": "pnpm check && pnpm typecheck && pnpm test",
+    "typecheck": "tsgo --noEmit",
+    "build:types": "tsc -b --emitDeclarationOnly",
+    "build:js": "esbuild src/cli/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/cli/index.js",
+    "build": "pnpm build:types && pnpm build:js",
+    "verify": "pnpm check && pnpm typecheck && pnpm build && pnpm test",
     "ci": "pnpm run verify",
-    "prepack": "rm -rf dist && tsc -b",
-    "pack:tarballs": "oclif pack tarballs",
-    "pack:win": "oclif pack win",
-    "pack:macos": "oclif pack macos",
-    "pack:deb": "oclif pack deb",
+    "prepack": "rm -rf dist && pnpm build",
     "test": "c8 mocha --forbid-only"
-  },
-  "types": "dist/cli/index.d.ts"
+  }
 }

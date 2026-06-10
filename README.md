@@ -17,6 +17,11 @@ Adds openapi snippets using `openapi-snippet` module in redoc style (x-codeSampl
 
 # Getting Started
 
+## Requirements
+
+- Node.js **22** (active LTS) or **24** (latest LTS). Older Node versions are not supported.
+- pnpm 9+.
+
 ## From npm
 
 ```sh-session
@@ -28,10 +33,11 @@ $ npm install -g openapi-snippet-cli  # original
 ```sh-session
 $ git clone https://github.com/npalladium/openapi-snippet-cli.git
 $ cd openapi-snippet-cli
-$ npm install
+$ pnpm install
+$ pnpm build       # produces dist/ via esbuild + tsc
 ```
 
-Then run directly without a build step:
+Then run directly without a global install:
 
 ```sh-session
 $ node bin/run schema.yaml -o dist/schema.yaml
@@ -40,9 +46,16 @@ $ node bin/run schema.yaml -o dist/schema.yaml
 Or link globally to use the `openapi-snippet` command anywhere:
 
 ```sh-session
-$ npm link
+$ pnpm link --global
 $ openapi-snippet schema.yaml -o dist/schema.yaml
 ```
+
+## Build Pipeline
+
+- `pnpm typecheck` — runs the **native** TypeScript compiler (`tsgo`) for fast type-checking.
+- `pnpm build:types` — emits `.d.ts` files via `tsc --emitDeclarationOnly`.
+- `pnpm build:js` — bundles the CLI entrypoint with **esbuild** (single ESM output, external packages).
+- `pnpm build` — runs both `build:types` and `build:js`.
 
 # Usage
 ## Adding Snippets to a Schema
