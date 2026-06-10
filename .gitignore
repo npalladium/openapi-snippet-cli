@@ -4,6 +4,7 @@
 /coverage
 /dist
 /lib
+/out
 /package-lock.json
 /tmp
 node_modules

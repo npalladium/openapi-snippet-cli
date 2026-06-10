@@ -1,53 +1,109 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
+
   "vcs": {
     "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
   },
+
   "files": {
-    "includes": ["**", "!**/dist/**", "!**/node_modules/**", "!**/coverage/**"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/coverage",
+      "!**/out",
+      "!**/.nyc_output",
+      "!**/tmp"
+    ]
   },
+
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineWidth": 100
+    "lineWidth": 100,
+    "lineEnding": "lf"
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true,
-      "correctness": {
-        "noUnusedVariables": "error",
-        "noUnusedImports": "error",
-        "useExhaustiveDependencies": "warn"
-      },
-      "suspicious": {
-        "noExplicitAny": "warn",
-        "noDoubleEquals": "error",
-        "noConsole": { "level": "warn", "options": { "allow": ["log"] } },
-        "noVar": "error"
-      },
-      "style": {
-        "useConst": "error",
-        "useTemplate": "error",
-        "noParameterAssign": "error"
-      },
-      "complexity": {
-        "noForEach": "off"
-      },
-      "performance": {
-        "noDelete": "warn"
-      }
-    }
-  },
+
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
       "trailingCommas": "all",
-      "semicolons": "asNeeded"
+      "semicolons": "asNeeded",
+      "arrowParentheses": "always",
+      "bracketSameLine": false,
+      "bracketSpacing": true,
+      "quoteProperties": "asNeeded"
+    }
+  },
+
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "warn",
+        "useExhaustiveDependencies": "error"
+      },
+
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noDoubleEquals": "error",
+        "noConsole": {
+          "level": "warn",
+          "options": { "allow": ["log", "warn", "error"] }
+        },
+        "noVar": "error",
+        "useIsArray": "error"
+      },
+
+      "style": {
+        "useConst": "error",
+        "noParameterAssign": "error",
+        "useTemplate": "error",
+        "useDefaultParameterLast": "error",
+        "useNumberNamespace": "error",
+        "useExportType": "error",
+        "useImportType": "error",
+        "useNodejsImportProtocol": "error",
+        "useConsistentArrayType": { "level": "error", "options": { "syntax": "shorthand" } },
+        "noNonNullAssertion": "error",
+        "noNegationElse": "warn",
+        "noUnusedTemplateLiteral": "error",
+        "useConsistentMemberAccessibility": {
+          "level": "error",
+          "options": { "accessibility": "noPublic" }
+        }
+      },
+
+      "complexity": {
+        "useLiteralKeys": "off",
+        "useArrowFunction": "error",
+        "noForEach": "off",
+        "noExcessiveCognitiveComplexity": {
+          "level": "warn",
+          "options": { "maxAllowedComplexity": 20 }
+        }
+      },
+
+      "performance": {
+        "noBarrelFile": "off",
+        "noDelete": "warn"
+      }
+    }
+  },
+
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
     }
   }
 }

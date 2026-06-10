@@ -3,56 +3,69 @@
  * These run the actual `bin/run` script as a child process.
  */
 import assert from 'node:assert/strict'
-import {createServer} from 'node:http'
-import type {Server} from 'node:http'
-import {spawn, spawnSync} from 'node:child_process'
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
-import {tmpdir} from 'node:os'
-import {join} from 'node:path'
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import type { Server } from 'node:http'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import yaml from 'js-yaml'
 
 const BIN = new URL('../bin/run', import.meta.url).pathname
+
+type CliResult = {
+  status: number | null
+  stdout: string
+  stderr: string
+  signal: NodeJS.Signals | null
+}
 
 /**
  * Async spawn — keeps the event loop alive so an in-process HTTP server
  * (used by URL tests) can respond to the child process's fetch() calls.
  * spawnSync would deadlock because it blocks the parent event loop.
  */
-function cliAsync(args: string[], opts: {timeout?: number} = {}): Promise<{status: number | null; stdout: string; stderr: string; signal: NodeJS.Signals | null}> {
-  return new Promise(resolve => {
-    const child = spawn('node', [BIN, ...args], {encoding: 'buffer'} as any)
+function cliAsync(args: string[], opts: { timeout?: number } = {}): Promise<CliResult> {
+  return new Promise((resolve) => {
+    const child = spawn('node', [BIN, ...args])
     let stdout = ''
     let stderr = ''
-    child.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
-    child.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (d: string) => {
+      stdout += d
+    })
+    child.stderr.on('data', (d: string) => {
+      stderr += d
+    })
     const timer = setTimeout(() => {
       child.kill()
-      resolve({status: null, stdout, stderr, signal: 'SIGTERM'})
+      resolve({ status: null, stdout, stderr, signal: 'SIGTERM' })
     }, opts.timeout ?? 15000)
     child.on('close', (code, signal) => {
       clearTimeout(timer)
-      resolve({status: code, stdout, stderr, signal})
+      resolve({ status: code, stdout, stderr, signal })
     })
   })
 }
 
 const MINIMAL_SPEC = {
   openapi: '3.0.0',
-  info: {title: 'Smoke Test API', version: '1.0.0'},
-  servers: [{url: 'https://api.example.com'}],
+  info: { title: 'Smoke Test API', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
   paths: {
     '/ping': {
       get: {
         operationId: 'ping',
         description: 'Health check',
-        responses: {'200': {description: 'OK'}},
+        responses: { '200': { description: 'OK' } },
       },
     },
     '/items': {
       get: {
         operationId: 'listItems',
         description: 'List items',
-        responses: {'200': {description: 'OK'}},
+        responses: { '200': { description: 'OK' } },
       },
       post: {
         operationId: 'createItem',
@@ -63,26 +76,30 @@ const MINIMAL_SPEC = {
             'application/json': {
               schema: {
                 type: 'object',
-                properties: {name: {type: 'string', example: 'widget'}},
+                properties: { name: { type: 'string', example: 'widget' } },
               },
             },
           },
         },
-        responses: {'201': {description: 'Created'}},
+        responses: { '201': { description: 'Created' } },
       },
     },
     '/items/{id}': {
       get: {
         operationId: 'getItem',
         description: 'Get item',
-        parameters: [{name: 'id', in: 'path', required: true, example: '42', schema: {type: 'string'}}],
-        responses: {'200': {description: 'OK'}},
+        parameters: [
+          { name: 'id', in: 'path', required: true, example: '42', schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'OK' } },
       },
       delete: {
         operationId: 'deleteItem',
         description: 'Delete item',
-        parameters: [{name: 'id', in: 'path', required: true, example: '42', schema: {type: 'string'}}],
-        responses: {'204': {description: 'No Content'}},
+        parameters: [
+          { name: 'id', in: 'path', required: true, example: '42', schema: { type: 'string' } },
+        ],
+        responses: { '204': { description: 'No Content' } },
       },
     },
   },
@@ -91,15 +108,22 @@ const MINIMAL_SPEC = {
 const MINIMAL_SPEC_JSON = JSON.stringify(MINIMAL_SPEC)
 const MINIMAL_SPEC_YAML = yaml.dump(MINIMAL_SPEC) as string
 
-function cli(args: string[], opts: {timeout?: number} = {}) {
+function cli(args: string[], opts: { timeout?: number } = {}) {
   return spawnSync('node', [BIN, ...args], {
     encoding: 'utf8',
     timeout: opts.timeout ?? 15000,
   })
 }
 
-function readYaml(file: string) {
-  return yaml.load(readFileSync(file, 'utf8')) as any
+type CodeSample = { lang: string; source: string }
+type Operation = Record<string, unknown> & { 'x-codeSamples': CodeSample[] }
+type PathItem = Record<string, unknown> & { get: Operation; post: Operation; delete: Operation }
+type SpecDoc = {
+  paths: Record<string, PathItem>
+}
+
+function readYaml(file: string): SpecDoc {
+  return yaml.load(readFileSync(file, 'utf8')) as SpecDoc
 }
 
 let tmpDir: string
@@ -110,32 +134,33 @@ before(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'openapi-snippet-cli-e2e-'))
 
   // Start a local HTTP server serving the minimal spec
-  await new Promise<void>(resolve => {
+  await new Promise<void>((resolve) => {
     httpServer = createServer((req, res) => {
       if (req.url === '/openapi.json') {
-        res.writeHead(200, {'Content-Type': 'application/json'})
+        res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(MINIMAL_SPEC_JSON)
       } else if (req.url === '/openapi.yaml') {
-        res.writeHead(200, {'Content-Type': 'application/yaml'})
+        res.writeHead(200, { 'Content-Type': 'application/yaml' })
         res.end(MINIMAL_SPEC_YAML)
       } else if (req.url === '/404') {
         res.writeHead(404)
         res.end('Not Found')
       } else {
-        res.writeHead(200, {'Content-Type': 'application/json'})
+        res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(MINIMAL_SPEC_JSON)
       }
     })
     httpServer.listen(0, '127.0.0.1', () => {
-      serverPort = (httpServer.address() as any).port
+      const addr = httpServer.address()
+      serverPort = typeof addr === 'object' && addr ? addr.port : 0
       resolve()
     })
   })
 })
 
 after(async () => {
-  rmSync(tmpDir, {recursive: true, force: true})
-  await new Promise<void>(resolve => httpServer.close(() => resolve()))
+  rmSync(tmpDir, { recursive: true, force: true })
+  await new Promise<void>((resolve) => httpServer.close(() => resolve()))
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -211,7 +236,13 @@ describe('CLI — local file input', () => {
 describe('CLI — http URL input', () => {
   it('fetches a JSON spec from http URL', async () => {
     const out = outFile('url-json.yaml')
-    const r = await cliAsync([`http://127.0.0.1:${serverPort}/openapi.json`, '-o', out, '-t', 'shell_curl'])
+    const r = await cliAsync([
+      `http://127.0.0.1:${serverPort}/openapi.json`,
+      '-o',
+      out,
+      '-t',
+      'shell_curl',
+    ])
     assert.equal(r.status, 0, `stderr: ${r.stderr}`)
     const d = readYaml(out)
     assert.ok(Array.isArray(d.paths['/ping'].get['x-codeSamples']))
@@ -220,7 +251,13 @@ describe('CLI — http URL input', () => {
 
   it('fetches a YAML spec from http URL', async () => {
     const out = outFile('url-yaml.yaml')
-    const r = await cliAsync([`http://127.0.0.1:${serverPort}/openapi.yaml`, '-o', out, '-t', 'shell_curl'])
+    const r = await cliAsync([
+      `http://127.0.0.1:${serverPort}/openapi.yaml`,
+      '-o',
+      out,
+      '-t',
+      'shell_curl',
+    ])
     assert.equal(r.status, 0, `stderr: ${r.stderr}`)
     const d = readYaml(out)
     assert.ok(d.paths['/ping'].get['x-codeSamples'])
@@ -253,7 +290,7 @@ describe('CLI — target filtering', () => {
     const d = readYaml(out)
     const samples = d.paths['/ping'].get['x-codeSamples']
     assert.equal(samples.length, 2)
-    const langs = samples.map((s: any) => s.lang)
+    const langs = samples.map((s: { lang: string }) => s.lang)
     assert.ok(langs.includes('Shell + Curl'))
     assert.ok(langs.includes('Node + Native'))
   })
@@ -309,11 +346,11 @@ describe('CLI — output correctness', () => {
       paths: {
         '/ping': {
           summary: 'Ping group',
-          parameters: [{name: 'X-Debug', in: 'header', schema: {type: 'string'}}],
+          parameters: [{ name: 'X-Debug', in: 'header', schema: { type: 'string' } }],
           get: {
             operationId: 'ping',
             description: 'Health check',
-            responses: {'200': {description: 'OK'}},
+            responses: { '200': { description: 'OK' } },
           },
         },
       },

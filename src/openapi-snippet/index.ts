@@ -7,38 +7,22 @@
  * Author: Erik Wittern
  * License: MIT
  */
-import {HTTPSnippet, availableTargets} from 'httpsnippet'
+import { availableTargets, HTTPSnippet } from 'httpsnippet'
 import * as OpenAPIToHar from './openapi-to-har.ts'
+
+const METHOD_ORDER = ['get', 'post', 'put', 'delete', 'patch']
 
 /**
  * Return snippets for endpoint identified using path and method in the given
  * OpenAPI document.
- *
- * @param {object} openApi  OpenAPI document
- * @param {string} path     Path identifying endpoint, e.g., '/users'
- * @param {string} method   HTTP method identifying endpoint, e.g., 'get'
- * @param {array} targets   List of languages to create snippets in, e.g,
- *                          ['cURL', 'Node']
- * @param {object} values   Optional: Values for the query parameters if present
  */
-const getEndpointSnippets = function (openApi: any, path: string, method: string, targets: Array<string>, values?: any) {
-  // if optional parameter is not provided, set it to empty object
-  if (typeof values === 'undefined') {
-    values = {}
-  }
-
+const getEndpointSnippets = (openApi, path, method, targets, values = {}) => {
   const hars = OpenAPIToHar.getEndpoint(openApi, path, method, values)
 
   const snippets = []
   for (const har of hars) {
     const snippet = new HTTPSnippet(har)
-    snippets.push(
-      ...getSnippetsForTargets(
-        targets,
-        snippet,
-        har.comment ? har.comment : undefined
-      )
-    )
+    snippets.push(...getSnippetsForTargets(targets, snippet, har.comment ? har.comment : undefined))
   }
 
   if (hars.length === 0) throw new Error(`No HAR for ${method.toUpperCase()} ${path}`)
@@ -50,18 +34,14 @@ const getEndpointSnippets = function (openApi: any, path: string, method: string
     url: hars[0].url,
     description: hars[0].description,
     resource: getResourceName(hars[0].url),
-    snippets: snippets,
+    snippets,
   }
 }
 
 /**
  * Return snippets for all endpoints in the given OpenAPI document.
- *
- * @param {object} openApi  OpenAPI document
- * @param {array} targets   List of languages to create snippets in, e.g,
- *                          ['cURL', 'Node']
  */
-const getSnippets = function (openApi, targets) {
+const getSnippets = (openApi, targets) => {
   const endpointHarInfoList = OpenAPIToHar.getAll(openApi)
 
   const results = []
@@ -86,7 +66,8 @@ const getSnippets = function (openApi, targets) {
   results.sort((a, b) => {
     if (a.resource < b.resource) {
       return -1
-    } if (a.resource > b.resource) {
+    }
+    if (a.resource > b.resource) {
       return 1
     }
     return getMethodOrder(a.method.toLowerCase(), b.method.toLowerCase())
@@ -98,32 +79,23 @@ const getSnippets = function (openApi, targets) {
 /**
  * Determine the order of HTTP methods.
  *
- * @param  {string} a One HTTP verb in lower case
- * @param  {string} b Another HTTP verb in lower case
- * @return {number}   The order instruction for the given HTTP verbs
+ * @return {number} The order instruction for the given HTTP verbs
  */
-const getMethodOrder = function (a, b) {
-  const order = ['get', 'post', 'put', 'delete', 'patch']
-  if (order.indexOf(a) === -1) {
-    return 1
-  } else if (order.indexOf(b) === -1) {
-    return -1
-  } else if (order.indexOf(a) < order.indexOf(b)) {
-    return -1
-  } else if (order.indexOf(a) > order.indexOf(b)) {
-    return 1
-  }
+const getMethodOrder = (a, b) => {
+  const ai = METHOD_ORDER.indexOf(a)
+  const bi = METHOD_ORDER.indexOf(b)
+  if (ai === -1) return 1
+  if (bi === -1) return -1
+  if (ai < bi) return -1
+  if (ai > bi) return 1
   return 0
 }
 
 /**
  * Determines the name of the resource exposed by the method.
  * E.g., ../users/{userId} --> users
- *
- * @param  {string} urlStr The OpenAPI path definition
- * @return {string}        The determined resource name
  */
-const getResourceName = function (urlStr) {
+const getResourceName = (urlStr) => {
   const pathComponents = urlStr.split('/')
   for (let i = pathComponents.length - 1; i >= 0; i--) {
     const cand = pathComponents[i]
@@ -137,14 +109,11 @@ const getResourceName = function (urlStr) {
 /**
  * Format the given target by splitting up language and library and making sure
  * that HTTP Snippet supports them.
- *
- * @param  {string} targetStr String defining a target, e.g., node_request
- * @return {object}           Object with formatted target, or null
  */
-const formatTarget = function (targetStr) {
-  const language = targetStr.split('_')[0]
+const formatTarget = (targetStr) => {
+  const [language, libHint] = targetStr.split('_')
   const title = capitalizeFirstLetter(language)
-  let library = targetStr.split('_')[1]
+  let library = libHint
 
   const validTargets = availableTargets()
   let validLanguage = false
@@ -171,10 +140,7 @@ const formatTarget = function (targetStr) {
   }
 
   return {
-    title:
-      typeof library !== 'undefined' ?
-        title + ' + ' + capitalizeFirstLetter(library) :
-        title,
+    title: typeof library !== 'undefined' ? `${title} + ${capitalizeFirstLetter(library)}` : title,
     language,
     library,
   }
@@ -182,34 +148,25 @@ const formatTarget = function (targetStr) {
 
 /**
  * Generate code snippets for each of the supplied targets
- *
- * @param targets {array}               List of language targets to generate code for
- * @param snippet {Object}              Snippet object from httpsnippet to convert into the target objects
- * @param mimeType {string | undefined} Additional information to add uniqueness to the produced snippets
  */
-const getSnippetsForTargets = function (targets, snippet, mimeType) {
+const getSnippetsForTargets = (targets, snippet, mimeType) => {
   const snippets = []
   for (const targetStr of targets) {
     const target = formatTarget(targetStr)
-    if (!target) throw new Error('Invalid target: ' + targetStr)
+    if (!target) throw new Error(`Invalid target: ${targetStr}`)
     snippets.push({
       id: targetStr,
-      ...(mimeType !== undefined && {mimeType: mimeType}),
+      ...(mimeType !== undefined && { mimeType: mimeType }),
       title: target.title,
       content: snippet.convert(
         target.language,
-        typeof target.library !== 'undefined' ? target.library : null
+        typeof target.library !== 'undefined' ? target.library : null,
       ),
     })
   }
   return snippets
 }
 
-const capitalizeFirstLetter = function (string) {
-  return string.charAt(0).toUpperCase() + string.slice(1)
-}
+const capitalizeFirstLetter = (string) => string.charAt(0).toUpperCase() + string.slice(1)
 
-export {
-  getSnippets,
-  getEndpointSnippets,
-}
+export { getSnippets, getEndpointSnippets }

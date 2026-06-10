@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict'
-import {getEndpointSnippets, getSnippets} from '../src/openapi-snippet/index.ts'
+import type { OpenAPI } from 'openapi-types'
+import { getEndpointSnippets, getSnippets } from '../src/openapi-snippet/index.ts'
 
-const minimalSpec: any = {
+const minimalSpec: OpenAPI.Document = {
   openapi: '3.0.0',
-  info: {title: 'Test', version: '1.0.0'},
-  servers: [{url: 'https://api.example.com'}],
+  info: { title: 'Test', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
   paths: {
     '/users': {
       get: {
         operationId: 'listUsers',
         description: 'List all users',
-        responses: {'200': {description: 'OK'}},
+        responses: { '200': { description: 'OK' } },
       },
       post: {
         operationId: 'createUser',
@@ -21,12 +22,12 @@ const minimalSpec: any = {
             'application/json': {
               schema: {
                 type: 'object',
-                properties: {name: {type: 'string', example: 'Alice'}},
+                properties: { name: { type: 'string', example: 'Alice' } },
               },
             },
           },
         },
-        responses: {'201': {description: 'Created'}},
+        responses: { '201': { description: 'Created' } },
       },
     },
     '/users/{userId}': {
@@ -34,9 +35,15 @@ const minimalSpec: any = {
         operationId: 'getUser',
         description: 'Get a user',
         parameters: [
-          {name: 'userId', in: 'path', required: true, example: 'user123', schema: {type: 'string'}},
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            example: 'user123',
+            schema: { type: 'string' },
+          },
         ],
-        responses: {'200': {description: 'OK'}},
+        responses: { '200': { description: 'OK' } },
       },
     },
   },
@@ -96,7 +103,7 @@ describe('getSnippets', () => {
 
   it('sorts GET before POST for the same resource', () => {
     const results = getSnippets(minimalSpec, ['shell_curl'])
-    const usersResults = results.filter(r => r.url === 'https://api.example.com/users')
+    const usersResults = results.filter((r) => r.url === 'https://api.example.com/users')
     assert.equal(usersResults.length, 2)
     assert.equal(usersResults[0].method, 'GET')
     assert.equal(usersResults[1].method, 'POST')
@@ -114,18 +121,18 @@ describe('getSnippets', () => {
   })
 
   it('sorts methods in canonical order across multiple', () => {
-    const spec: any = {
+    const spec: OpenAPI.Document = {
       ...minimalSpec,
       paths: {
         '/items': {
-          delete: {operationId: 'deleteItem', responses: {'200': {description: 'OK'}}},
-          post: {operationId: 'createItem', responses: {'201': {description: 'Created'}}},
-          get: {operationId: 'listItems', responses: {'200': {description: 'OK'}}},
+          delete: { operationId: 'deleteItem', responses: { '200': { description: 'OK' } } },
+          post: { operationId: 'createItem', responses: { '201': { description: 'Created' } } },
+          get: { operationId: 'listItems', responses: { '200': { description: 'OK' } } },
         },
       },
     }
     const results = getSnippets(spec, ['shell_curl'])
-    const methods = results.map(r => r.method)
+    const methods = results.map((r) => r.method)
     assert.deepEqual(methods, ['GET', 'POST', 'DELETE'])
   })
 })
