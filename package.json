@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
-    "@tsconfig/node20": "^20.1.6",
     "@types/js-yaml": "^4",
     "@types/lodash": "^4.17.20",
     "@types/mocha": "^10",
@@ -38,7 +37,7 @@
     "esbuild": "^0.28.0",
     "mocha": "^10",
     "oclif": "^4.22.81",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
     "typescript": "^5.9.3"
   },
   "engines": {
@@ -90,9 +89,11 @@
     "build:types": "tsc -b --emitDeclarationOnly",
     "build:js": "esbuild src/cli/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/cli/index.js",
     "build": "pnpm build:types && pnpm build:js",
+    "dev": "tsx src/dev.ts",
+    "test": "c8 mocha --forbid-only",
+    "test:watch": "mocha --watch",
     "verify": "pnpm check && pnpm typecheck && pnpm build && pnpm test",
     "ci": "pnpm run verify",
-    "prepack": "rm -rf dist && pnpm build",
-    "test": "c8 mocha --forbid-only"
+    "prepack": "rm -rf dist && pnpm build"
   }
 }

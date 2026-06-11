@@ -1,6 +1,5 @@
-loader: ts-node/esm
-watch-extensions: ts
 recursive: true
 reporter: spec
 timeout: 15000
 spec: test/**/*.test.ts
+require: tsx

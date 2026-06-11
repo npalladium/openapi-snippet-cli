@@ -1,21 +1,10 @@
 #!/usr/bin/env node
 
-import fs from 'node:fs';
-import path from 'node:path';
+// Single-mode launcher: always invoke the compiled CLI in dist/.
+// For dev (no dist yet), run `pnpm dev` instead — that uses tsx to
+// run the TypeScript source directly.
 
-const __dirname = import.meta.dirname;
-const project = path.join(__dirname, '../tsconfig.json');
-const distIndex = path.join(__dirname, '../dist/cli/index.js');
-const dev = fs.existsSync(project) && !fs.existsSync(distIndex);
+process.env.NODE_ENV ??= 'production'
 
-(async () => {
-  if (dev) {
-    // Tell oclif to resolve TypeScript source (it treats missing NODE_ENV as production)
-    process.env.NODE_ENV ??= 'development'
-    // Pre-register ts-node with ESM support for TypeScript source loading
-    const tsNode = await import('ts-node')
-    tsNode.register({project, esm: true})
-  }
-  const {run, handle} = await import('@oclif/core')
-  await run(process.argv.slice(2), import.meta.url).catch(handle)
-})();
+const { run, handle } = await import('@oclif/core')
+await run(process.argv.slice(2), import.meta.url).catch(handle)

@@ -34,18 +34,28 @@ $ npm install -g openapi-snippet-cli  # original
 $ git clone https://github.com/npalladium/openapi-snippet-cli.git
 $ cd openapi-snippet-cli
 $ pnpm install
-$ pnpm build       # produces dist/ via esbuild + tsc
 ```
 
-Then run directly without a global install:
+### Dev (run from source)
 
 ```sh-session
+$ pnpm dev -- schema.yaml -o dist/schema.yaml
+```
+
+`pnpm dev` runs the TypeScript source directly through `tsx` — no build step
+required. Edit a file, rerun.
+
+### Build (production)
+
+```sh-session
+$ pnpm build      # produces dist/ via esbuild + tsc
 $ node bin/run schema.yaml -o dist/schema.yaml
 ```
 
 Or link globally to use the `openapi-snippet` command anywhere:
 
 ```sh-session
+$ pnpm build
 $ pnpm link --global
 $ openapi-snippet schema.yaml -o dist/schema.yaml
 ```
@@ -56,6 +66,8 @@ $ openapi-snippet schema.yaml -o dist/schema.yaml
 - `pnpm build:types` — emits `.d.ts` files via `tsc --emitDeclarationOnly`.
 - `pnpm build:js` — bundles the CLI entrypoint with **esbuild** (single ESM output, external packages).
 - `pnpm build` — runs both `build:types` and `build:js`.
+- `pnpm dev` — runs the CLI from source via `tsx` (no build).
+- `pnpm test:watch` — runs the mocha test suite in watch mode (uses `tsx`).
 
 # Usage
 ## Adding Snippets to a Schema

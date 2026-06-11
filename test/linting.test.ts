@@ -156,6 +156,17 @@ describe('package.json scripts', () => {
     )
   })
 
+  it('exposes a dev script using tsx for source-level runs', () => {
+    assert.ok(scripts.dev?.includes('tsx'), `expected dev to use tsx, got: ${scripts.dev}`)
+  })
+
+  it('exposes a test:watch script using mocha --watch', () => {
+    assert.ok(
+      scripts['test:watch']?.includes('mocha --watch'),
+      `expected test:watch to use mocha --watch, got: ${scripts['test:watch']}`,
+    )
+  })
+
   it('exposes a ci/verify script that chains check + typecheck + build + test', () => {
     const ci = scripts.verify ?? scripts.ci
     assert.ok(ci, 'expected a verify or ci script')
@@ -228,6 +239,33 @@ describe('gitignore', () => {
 
   it('ignores the out/ directory', () => {
     assert.match(gitignore, /^\/out$/m, 'expected /out in .gitignore')
+  })
+})
+
+describe('mocha config', () => {
+  const cfg = loadText(join(REPO_ROOT, '.mocharc.yml'))
+
+  it('uses tsx as the test loader', () => {
+    assert.ok(cfg.includes('tsx'), `expected .mocharc.yml to use tsx; got:\n${cfg}`)
+  })
+
+  it('does not reference ts-node', () => {
+    assert.ok(!cfg.includes('ts-node'), `ts-node should be removed; got:\n${cfg}`)
+  })
+})
+
+describe('bin/run', () => {
+  const body = loadText(join(REPO_ROOT, 'bin/run'))
+
+  it('is a single-mode production launcher (no dev branch)', () => {
+    assert.ok(
+      !body.includes('ts-node') && !body.includes('fs.existsSync(project)'),
+      'bin/run should not contain the legacy dev branch with ts-node or a tsconfig check',
+    )
+  })
+
+  it('invokes the compiled CLI from dist/', () => {
+    assert.ok(body.includes('@oclif/core'), 'expected bin/run to delegate to @oclif/core')
   })
 })
 
