@@ -20,7 +20,7 @@
     "@readme/openapi-parser": "^5.5.0",
     "@stricli/core": "^1.2.7",
     "httpsnippet": "^3.0.9",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.2.0",
     "lodash": "^4.17.15",
     "openapi-sampler": "^1.6.2",
     "openapi-types": "^12.1.3",
