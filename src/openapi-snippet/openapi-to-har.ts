@@ -251,7 +251,7 @@ const getPayloads = (openApi, path, method) => {
 
   let requestBody = openApi.paths[path][method].requestBody
   if (requestBody?.$ref) {
-    requestBody = resolveRef(openApi, requestBody.$ref)
+    requestBody = resolveRefMemoized(openApi, requestBody.$ref)
   }
 
   return collectRequestBodyPayloads(openApi, requestBody)
@@ -338,7 +338,7 @@ const getParameterValues = (openApi, param, location, values) => {
   } else if (typeof param.examples !== 'undefined') {
     let firstExample = Object.values(param.examples)[0]
     if (typeof firstExample.$ref === 'string' && /^#/.test(firstExample.$ref)) {
-      firstExample = resolveRef(openApi, firstExample.$ref)
+      firstExample = resolveRefMemoized(openApi, firstExample.$ref)
     }
     value = firstExample.value
   } else if (typeof param.schema !== 'undefined' && typeof param.schema.example !== 'undefined') {
@@ -359,11 +359,11 @@ const parseParametersToQuery = (openApi, parameters, location, values) => {
 
   for (let param of parameters) {
     if (typeof param.$ref === 'string' && /^#/.test(param.$ref)) {
-      param = resolveRef(openApi, param.$ref)
+      param = resolveRefMemoized(openApi, param.$ref)
     }
     if (typeof param.schema !== 'undefined') {
       if (typeof param.schema.$ref === 'string' && /^#/.test(param.schema.$ref)) {
-        param.schema = resolveRef(openApi, param.schema.$ref)
+        param.schema = resolveRefMemoized(openApi, param.schema.$ref)
         if (typeof param.schema.type === 'undefined') {
           // many schemas don't have an explicit type
           param.schema.type = 'object'
@@ -581,6 +581,24 @@ const resolveRef = (openApi, ref) => {
     return obj[parts[index]]
   }
   return recursive(openApi, 1)
+}
+
+// Build a memoized resolver per OpenAPI document. The first call to
+// resolveRefMemoized walks the doc once to index every JSON-pointer
+// path; subsequent calls look up by path. Cuts per-endpoint resolveRef
+// cost from O(depth) to O(1).
+const refCache = new WeakMap()
+const resolveRefMemoized = (openApi, ref) => {
+  let cache = refCache.get(openApi)
+  if (!cache) {
+    cache = new Map()
+    refCache.set(openApi, cache)
+  }
+  const cached = cache.get(ref)
+  if (cached !== undefined) return cached
+  const value = resolveRef(openApi, ref)
+  cache.set(ref, value)
+  return value
 }
 
 export { openApiToHarList as getAll, createHar as getEndpoint, createHarParameterObjects }

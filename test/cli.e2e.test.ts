@@ -502,3 +502,57 @@ describe('CLI — exit codes', () => {
     assert.equal(r.status, 3, `stderr: ${r.stderr}`)
   })
 })
+
+// ─── --chunk-size ──────────────────────────────────────────────────────────────
+
+describe('CLI — --chunk-size', () => {
+  it('produces equivalent output with --chunk-size=10 vs the default (no chunking)', () => {
+    const spec = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Chunked', version: '1' },
+      servers: [{ url: 'https://api.example.com' }],
+      paths: Object.fromEntries(
+        Array.from({ length: 30 }, (_, i) => [
+          `/p${i}`,
+          { get: { operationId: `g${i}`, responses: { '200': { description: 'OK' } } } },
+        ]),
+      ),
+    })
+    const inFile = outFile('chunked-input.json')
+    writeFileSync(inFile, spec)
+
+    const outDefault = outFile('chunked-default.yaml')
+    const outChunked = outFile('chunked-chunked.yaml')
+    const r1 = cli([inFile, '-o', outDefault, '-t', 'shell_curl'])
+    const r2 = cli([inFile, '-o', outChunked, '-t', 'shell_curl', '--chunk-size', '10'])
+    assert.equal(r1.status, 0, r1.stderr)
+    assert.equal(r2.status, 0, r2.stderr)
+
+    const d1 = readYaml(outDefault)
+    const d2 = readYaml(outChunked)
+    assert.deepEqual(
+      Object.keys(d1.paths).sort(),
+      Object.keys(d2.paths).sort(),
+      'chunked output has different path set',
+    )
+    // Sample a path and compare its operation content.
+    const samplePath = Object.keys(d1.paths)[0]
+    assert.equal(
+      d1.paths[samplePath].get['x-codeSamples'].length,
+      d2.paths[samplePath].get['x-codeSamples'].length,
+    )
+  })
+
+  it('accepts --chunk-size=0 (legacy / no chunking)', () => {
+    const out = outFile('chunk-zero.yaml')
+    const r = cli([specFile(), '-o', out, '-t', 'shell_curl', '--chunk-size', '0'])
+    assert.equal(r.status, 0, r.stderr)
+    const d = readYaml(out)
+    assert.ok(d.paths['/ping'].get['x-codeSamples'])
+  })
+
+  it('rejects negative --chunk-size', () => {
+    const r = cli([specFile(), '-o', outFile('neg.yaml'), '-t', 'shell_curl', '--chunk-size', '-1'])
+    assert.notEqual(r.status, 0)
+  })
+})

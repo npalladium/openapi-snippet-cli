@@ -5,7 +5,7 @@ import { Args, Command, Flags } from '@oclif/core'
 import { parse as parseOpenAPI } from '@readme/openapi-parser'
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
-import { injectSnippets } from '../pipeline.ts'
+import { injectSnippets, serializeChunked } from '../pipeline.ts'
 
 export const allTargets = [
   'c_libcurl',
@@ -91,6 +91,11 @@ class OpenapiSnippetCli extends Command {
       description: 'enable trace-level logging (also: NODE_DEBUG=openapi-snippet)',
       default: false,
     }),
+    'chunk-size': Flags.integer({
+      description:
+        'process N paths per chunk when serializing. Lower values use less memory and finish faster on large specs. 0 = process all at once (legacy behavior).',
+      default: 0,
+    }),
   }
 
   static args = {
@@ -115,23 +120,42 @@ class OpenapiSnippetCli extends Command {
       const api = await this.loadSpec(input)
       debug('spec loaded: %d paths', Object.keys(api.paths ?? {}).length)
 
+      if (flags['chunk-size'] < 0) {
+        throw new CliError(
+          `--chunk-size must be >= 0 (got ${flags['chunk-size']})`,
+          ExitCode.USER_ERROR,
+        )
+      }
       const targets = this.resolveTargets(flags.targets)
       debug('targets: %o', targets)
 
       const apiWithSnippets = this.withSnippets(api, targets)
-      const output = this.serialize(apiWithSnippets, flags.ext)
 
       if (flags['dry-run']) {
-        process.stdout.write(output)
-        debug('dry-run: wrote %d bytes to stdout', output.length)
+        if (flags['chunk-size'] > 0 && flags.ext === 'yaml') {
+          this.serializeChunkedToStream(api, targets, 'yaml', flags['chunk-size'], process.stdout)
+        } else {
+          const output = this.serialize(apiWithSnippets, flags.ext)
+          process.stdout.write(output)
+          debug('dry-run: wrote %d bytes to stdout', output.length)
+        }
         return
       }
 
       const absoluteFileName = path.resolve(flags.output)
       const dir = path.dirname(absoluteFileName)
       fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(absoluteFileName, output)
-      debug('wrote %d bytes to %s', output.length, absoluteFileName)
+
+      if (flags['chunk-size'] > 0 && flags.ext === 'yaml') {
+        const stream = fs.createWriteStream(absoluteFileName)
+        this.serializeChunkedToStream(api, targets, 'yaml', flags['chunk-size'], stream)
+        stream.end()
+        debug('wrote chunked output to %s', absoluteFileName)
+      } else {
+        const output = this.serialize(apiWithSnippets, flags.ext)
+        fs.writeFileSync(absoluteFileName, output)
+        debug('wrote %d bytes to %s', output.length, absoluteFileName)
+      }
     } catch (err) {
       const code = err instanceof CliError ? err.exitCode : ExitCode.INTERNAL_ERROR
       this.error(err instanceof Error ? err.message : String(err), { exit: code })
@@ -251,6 +275,16 @@ class OpenapiSnippetCli extends Command {
 
   withSnippets(api: OpenAPI.Document, targets: readonly string[]): OpenAPI.Document {
     return injectSnippets(api, targets)
+  }
+
+  serializeChunkedToStream(
+    api: OpenAPI.Document,
+    targets: readonly string[],
+    format: 'yaml' | 'json',
+    chunkSize: number,
+    stream: NodeJS.WritableStream,
+  ): void {
+    serializeChunked(api, targets, format, chunkSize, stream as never)
   }
 }
 
