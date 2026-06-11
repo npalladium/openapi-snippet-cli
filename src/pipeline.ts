@@ -130,26 +130,33 @@ export function serializeChunked(
   // Write head (which already ends with `paths:\n`).
   out.write(head)
 
+  let lastChunkEndedWithNewline = false
   for (let i = 0; i < allKeys.length; i += chunkSize) {
     const keys = allKeys.slice(i, i + chunkSize)
     const slice: Record<string, unknown> = {}
     for (const k of keys) slice[k] = originalPaths[k]
     const enriched = injectSnippets({ ...spec, paths: slice } as OpenAPI.Document, targets)
-    // Dump the chunk's paths and strip the `paths:\n` prefix.
+    // Dump the chunk's paths and strip the leading `paths:\n` line.
+    // Keep the trailing newline: it terminates any literal block
+    // scalars (`|-`) at the end of the chunk, and the next chunk's
+    // leading line will be a properly-indented `  /path:` key.
     const dumped = yaml.dump({ paths: enriched.paths }, { lineWidth: 100, sortKeys: false })
     const firstNewline = dumped.indexOf('\n')
     if (firstNewline !== -1) {
-      out.write(dumped.slice(firstNewline + 1))
+      const body = dumped.slice(firstNewline + 1)
+      out.write(body)
+      lastChunkEndedWithNewline = body.endsWith('\n')
     }
   }
 
-  // Write tail (everything after `paths:`). Skip a leading `paths:`
-  // if present (defensive — our skeleton shouldn't have one).
-  if (tail.trim() !== '') {
-    out.write('\n')
+  // Write tail (everything after `paths:`). If the previous write
+  // ended with a newline, no separator is needed; otherwise add one.
+  // This keeps the boundary tight (one `\n` between blocks) without
+  // corrupting any in-flight literal block scalars.
+  if (tail !== '') {
+    if (!lastChunkEndedWithNewline) out.write('\n')
     out.write(tail)
   }
-  out.write('\n')
 }
 
 /**

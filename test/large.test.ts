@@ -187,4 +187,25 @@ describe('large spec — chunked serialization', () => {
       `chunked=${tChunked.toFixed(0)}ms, one-shot=${tOneShot.toFixed(0)}ms (chunked should be 1.5x faster)`,
     )
   })
+
+  it('chunked output is byte-identical to no-chunk at any chunk size', () => {
+    // Use a spec that generates long literal block scalars so we
+    // exercise the `|-` boundary handling. Both one-shot and chunked
+    // paths must produce byte-identical output because the pipeline
+    // code is responsible for emitting the same boundary whitespace.
+    const spec = buildLargeSpec(60, 4) as Parameters<typeof injectSnippets>[0]
+    // Inject once to get the reference one-shot output.
+    const oneShot = yaml.dump(injectSnippets(spec, ['shell_curl']), { lineWidth: 100 })
+
+    // Test multiple chunk sizes; all must produce byte-identical output.
+    for (const chunkSize of [1, 5, 10, 20, 60, 200]) {
+      const sink = makeCollector()
+      serializeChunked(spec, ['shell_curl'], 'yaml', chunkSize, sink)
+      assert.equal(
+        sink.data,
+        oneShot,
+        `chunk-size=${chunkSize}: chunked output should be byte-identical to one-shot`,
+      )
+    }
+  })
 })

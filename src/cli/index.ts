@@ -7,6 +7,14 @@ import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
 import { injectSnippets, serializeChunked } from '../pipeline.ts'
 
+/**
+ * Warn when the no-chunk path would dominate runtime on a large spec.
+ * Empirically, `yaml.dump` on a 10000-path spec takes ~11s and grows
+ * quadratically with size; below ~5000 paths the no-chunk path is
+ * still well under a second.
+ */
+export const LARGE_SPEC_PATH_THRESHOLD = 5000
+
 export const allTargets = [
   'c_libcurl',
   'csharp_restsharp',
@@ -118,7 +126,16 @@ class OpenapiSnippetCli extends Command {
       const input = this.resolveInput(args.file, flags.stdin)
       debug('input source: %s', input.source)
       const api = await this.loadSpec(input)
-      debug('spec loaded: %d paths', Object.keys(api.paths ?? {}).length)
+      const pathCount = Object.keys(api.paths ?? {}).length
+      debug('spec loaded: %d paths', pathCount)
+
+      // Warn when the no-chunk path would be slow on a large spec.
+      // Threshold matches the empirical 5s cliff at ~5000 paths.
+      if (flags['chunk-size'] === 0 && pathCount >= LARGE_SPEC_PATH_THRESHOLD) {
+        process.stderr.write(
+          `Tip: this spec has ${pathCount} paths. Pass --chunk-size 100 for ~6x faster serialization.\n`,
+        )
+      }
 
       if (flags['chunk-size'] < 0) {
         throw new CliError(
