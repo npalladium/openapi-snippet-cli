@@ -1,0 +1,117 @@
+openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+  description: A small OpenAPI fixture for snapshot testing.
+servers:
+  - url: https://petstore.example.com/v1
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List all pets
+      tags:
+        - pets
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            maximum: 100
+      responses:
+        '200':
+          description: A paged array of pets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pets'
+      x-codeSamples:
+        - lang: Shell + Curl
+          source: |-
+            curl --request GET \
+              --url 'https://petstore.example.com/v1/pets?limit=SOME_INTEGER_VALUE'
+    post:
+      operationId: createPet
+      summary: Create a pet
+      tags:
+        - pets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        '201':
+          description: Null response
+      x-codeSamples:
+        - lang: Shell + Curl
+          source: |-
+            curl --request POST \
+              --url https://petstore.example.com/v1/pets \
+              --header 'content-type: application/json' \
+              --data '{"id":0,"name":"string","tag":"string"}'
+  /pets/{petId}:
+    get:
+      operationId: showPetById
+      summary: Info for a specific pet
+      tags:
+        - pets
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Expected response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+        default:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-codeSamples:
+        - lang: Shell + Curl
+          source: |-
+            curl --request GET \
+              --url https://petstore.example.com/v1/pets/%7BpetId%7D
+components:
+  schemas:
+    Pet:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        tag:
+          type: string
+    Pets:
+      type: array
+      items:
+        $ref: '#/components/schemas/Pet'
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        id:
+          type: integer
+          format: int32
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string

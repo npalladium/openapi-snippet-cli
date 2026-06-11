@@ -95,6 +95,44 @@ $ openapi-snippet schema.yaml -t java_okhttp -o dist/schema.json
 
 This should add snippets for 'java` using OkHttp.
 
+## Discovering available targets
+
+```sh-session
+$ openapi-snippet --list-targets
+c_libcurl
+csharp_restsharp
+go_native
+java_okhttp
+...
+```
+
+## Piping a spec on stdin
+
+```sh-session
+$ cat schema.yaml | openapi-snippet -o dist/schema.yaml
+$ curl https://example.com/openapi.json | openapi-snippet --stdin -e json -o dist/schema.json
+```
+
+oclif auto-fills the FILE argument from stdin when stdin is piped, so
+`--stdin` is optional. The flag is a no-op signal of intent.
+
+## Dry-run
+
+```sh-session
+$ openapi-snippet schema.yaml --dry-run -t shell_curl > /dev/null
+```
+
+Prints the resolved spec to stdout instead of writing the output file.
+
+## Exit codes
+
+| code | meaning                          |
+|------|----------------------------------|
+| 0    | success                          |
+| 1    | user error (bad flag, missing input, unknown --ext, no matching --targets) |
+| 2    | internal/unexpected error        |
+| 3    | network error (HTTP fetch failed)|
+
 # Arguments
 ```
 USAGE
@@ -108,14 +146,15 @@ ARGUMENTS
 
 ```
 OPTIONS
-  -e, --ext=yaml|json    [default: yaml] output format
-  -h, --help             show CLI help
-  -o, --output=output    [default: output.yaml] output file name
-
-  -t, --targets=targets  target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. Supports
-                         languages supported in https://github.com/ErikWittern/openapi-snippet. Defaults to adding snippets for ALL supported languages.
-
-  -v, --version          show CLI version
+  -e, --ext=yaml|json         [default: yaml] output format
+      --dry-run               print the resolved spec to stdout instead of writing to --output
+  -h, --help                  show CLI help
+      --list-targets          print the list of valid --targets values and exit
+  -o, --output=output         [default: output.yaml] output file name. Ignored when --dry-run.
+      --stdin                 read the spec from stdin (also: oclif auto-fills FILE from stdin)
+  -t, --targets=targets       target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. Supports languages supported in https://github.com/ErikWittern/openapi-snippet. Defaults to adding snippets for ALL supported languages.
+      --verbose               accepted for compat; set NODE_DEBUG=openapi-snippet for trace logging
+  -v, --version               show CLI version
 ```
 
 # Credits

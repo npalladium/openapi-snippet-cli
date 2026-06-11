@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { Server } from 'node:http'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -25,9 +25,12 @@ type CliResult = {
  * (used by URL tests) can respond to the child process's fetch() calls.
  * spawnSync would deadlock because it blocks the parent event loop.
  */
-function cliAsync(args: string[], opts: { timeout?: number } = {}): Promise<CliResult> {
+function cliAsync(
+  args: string[],
+  opts: { timeout?: number; input?: string } = {},
+): Promise<CliResult> {
   return new Promise((resolve) => {
-    const child = spawn('node', [BIN, ...args])
+    const child = spawn('node', [BIN, ...args], { stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
     child.stdout.setEncoding('utf8')
@@ -38,6 +41,13 @@ function cliAsync(args: string[], opts: { timeout?: number } = {}): Promise<CliR
     child.stderr.on('data', (d: string) => {
       stderr += d
     })
+    if (opts.input) {
+      child.stdin.setEncoding('utf8')
+      child.stdin.write(opts.input)
+      child.stdin.end()
+    } else {
+      child.stdin.end()
+    }
     const timer = setTimeout(() => {
       child.kill()
       resolve({ status: null, stdout, stderr, signal: 'SIGTERM' })
@@ -363,5 +373,132 @@ describe('CLI — output correctness', () => {
     assert.equal(d.paths['/ping'].summary, 'Ping group')
     assert.ok(!d.paths['/ping']['x-codeSamples'], 'path-level should not get x-codeSamples')
     assert.ok(d.paths['/ping'].get['x-codeSamples'], 'operation should get x-codeSamples')
+  })
+})
+
+// ─── New flags: --list-targets, --stdin, --dry-run, --verbose ────────────────
+
+describe('CLI — --list-targets', () => {
+  it('prints all targets and exits 0', () => {
+    const r = cli(['--list-targets'])
+    assert.equal(r.status, 0, r.stderr)
+    const lines = r.stdout.trim().split('\n')
+    assert.ok(lines.length > 5, `expected many targets, got ${lines.length}`)
+    assert.ok(lines.includes('shell_curl'))
+    assert.ok(lines.includes('node_native'))
+  })
+
+  it('ignores the file argument when --list-targets is set', () => {
+    const r = cli(['--list-targets', '/nonexistent/path.yaml'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(r.stdout.includes('shell_curl'))
+  })
+})
+
+describe('CLI — --stdin', () => {
+  it('reads the spec from stdin when piped', async () => {
+    const out = outFile('stdin.yaml')
+    const r = await cliAsync(['--stdin', '-o', out, '-t', 'shell_curl'], {
+      input: MINIMAL_SPEC_JSON,
+    })
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`)
+    const d = readYaml(out)
+    assert.ok(d.paths['/ping'].get['x-codeSamples'])
+  })
+
+  it('reads the spec from stdin without the --stdin flag (oclif auto-stdin)', async () => {
+    const out = outFile('auto-stdin.yaml')
+    const r = await cliAsync(['-o', out, '-t', 'shell_curl'], { input: MINIMAL_SPEC_JSON })
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`)
+    const d = readYaml(out)
+    assert.ok(d.paths['/ping'].get['x-codeSamples'])
+  })
+
+  it('reads YAML from stdin', async () => {
+    const out = outFile('stdin-yaml.yaml')
+    const r = await cliAsync(['-o', out, '-t', 'shell_curl'], { input: MINIMAL_SPEC_YAML })
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`)
+    const d = readYaml(out)
+    assert.ok(d.paths['/ping'].get['x-codeSamples'])
+  })
+
+  it('errors when stdin is a TTY and no file is given', () => {
+    const r = cli([])
+    assert.notEqual(r.status, 0, 'expected non-zero exit when no input and TTY')
+  })
+})
+
+describe('CLI — --dry-run', () => {
+  it('writes the resolved spec to stdout, not to --output', () => {
+    const out = outFile('dry-run-should-not-exist.yaml')
+    const r = cli([specFile(), '-o', out, '-t', 'shell_curl', '--dry-run'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(r.stdout.includes('openapi:'), 'expected spec on stdout')
+    assert.ok(!existsSync(out), 'expected output file NOT to exist')
+  })
+
+  it('respects --ext when dry-running', () => {
+    const r = cli([specFile(), '-t', 'shell_curl', '--dry-run', '-e', 'json'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(r.stdout.trim().startsWith('{'), 'expected JSON on stdout')
+  })
+})
+
+describe('CLI — --verbose', () => {
+  it('is accepted without error and produces identical output to silent mode', () => {
+    const out1 = outFile('verbose.yaml')
+    const out2 = outFile('silent.yaml')
+    const r1 = cli([specFile(), '-o', out1, '-t', 'shell_curl', '--verbose'])
+    const r2 = cli([specFile(), '-o', out2, '-t', 'shell_curl'])
+    assert.equal(r1.status, 0, r1.stderr)
+    assert.equal(r2.status, 0, r2.stderr)
+    assert.equal(readFileSync(out1, 'utf8'), readFileSync(out2, 'utf8'))
+  })
+
+  it('emits debug output when NODE_DEBUG=openapi-snippet is set', () => {
+    const r = spawnSync(
+      'node',
+      [BIN, specFile(), '-o', outFile('node-debug.yaml'), '-t', 'shell_curl'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, NODE_DEBUG: 'openapi-snippet' },
+      },
+    )
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(
+      r.stderr,
+      /OPENAPI-SNIPPET|openapi-snippet/i,
+      'expected debug output in stderr when NODE_DEBUG is set',
+    )
+  })
+})
+
+// ─── Exit codes ───────────────────────────────────────────────────────────────
+
+describe('CLI — exit codes', () => {
+  it('exits 0 on success', () => {
+    const r = cli([specFile(), '-o', outFile('ok.yaml'), '-t', 'shell_curl'])
+    assert.equal(r.status, 0)
+  })
+
+  it('exits non-zero on unknown --ext', () => {
+    const r = cli([specFile(), '-o', outFile('bad-ext.yaml'), '-e', 'xml', '-t', 'shell_curl'])
+    assert.notEqual(r.status, 0)
+  })
+
+  it('exits 3 on HTTP fetch failure (connection refused)', () => {
+    const r = cli(['http://127.0.0.1:1/spec.json', '-o', outFile('net.yaml'), '-t', 'shell_curl'])
+    assert.equal(r.status, 3, `stderr: ${r.stderr}`)
+  })
+
+  it('exits 3 on HTTP 4xx', async () => {
+    const r = await cliAsync([
+      `http://127.0.0.1:${serverPort}/404`,
+      '-o',
+      outFile('404.yaml'),
+      '-t',
+      'shell_curl',
+    ])
+    assert.equal(r.status, 3, `stderr: ${r.stderr}`)
   })
 })
