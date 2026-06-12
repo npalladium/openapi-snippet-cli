@@ -333,6 +333,12 @@ describe('dependency hygiene', () => {
     assert.ok(!deps['@oclif/plugin-help'], '@oclif/plugin-help should be removed')
   })
 
+  it('declares redoc as an optional (not required) dependency', () => {
+    const optional = (pkg.optionalDependencies ?? {}) as Record<string, string>
+    assert.ok(optional.redoc, 'redoc should be an optionalDependency')
+    assert.ok(!deps.redoc, 'redoc should not be a hard runtime dependency')
+  })
+
   it('does not import oclif anywhere in src/', () => {
     assert.ok(
       !/from ['"]@oclif|require\(['"]@oclif/.test(allSrc),

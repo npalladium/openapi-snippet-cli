@@ -109,6 +109,13 @@ file):
 $ openapi-snippet schema.yaml -e html --inline-redoc -o dist/docs.html
 ```
 
+`--inline-redoc` reads the bundle from the optional [`redoc`](https://npmjs.com/package/redoc)
+package, which is **not** installed by default. Install it alongside the CLI —
+`npm i redoc`, `yarn add redoc`, or `pnpm add redoc` (add `-g`/`global` if you
+installed the CLI globally). The lookup checks both the CLI's own install and
+the current project, so a globally-installed CLI can use a project-local `redoc`.
+If it's missing, the command exits with guidance instead of failing obscurely.
+
 ## Choosing Targets
 ```sh-session
 $ openapi-snippet schema.yaml -t java -t c -o dist/schema.json

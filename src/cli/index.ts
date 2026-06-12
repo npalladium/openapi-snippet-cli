@@ -187,7 +187,7 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   // (and duplicate onSkip warnings) on the chunked path.
   const useChunked = flags.chunkSize > 0 && ext === 'yaml'
   const htmlOptions: RenderHtmlOptions | undefined =
-    ext === 'html' && flags.inlineRedoc ? { inlineBundle: readRedocBundle() } : undefined
+    ext === 'html' && flags.inlineRedoc ? { inlineBundle: loadRedocBundle() } : undefined
 
   if (flags.dryRun) {
     if (useChunked) {
@@ -215,10 +215,46 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   }
 }
 
-/** Read the Redoc standalone bundle shipped by the `redoc` dependency. */
-function readRedocBundle(): string {
-  const require = createRequire(import.meta.url)
-  return fs.readFileSync(require.resolve('redoc/bundles/redoc.standalone.js'), 'utf8')
+const REDOC_BUNDLE_SPECIFIER = 'redoc/bundles/redoc.standalone.js'
+
+/**
+ * Resolvers tried, in order, to locate the optional `redoc` package's
+ * standalone bundle:
+ *   1. from this CLI's own module — finds redoc whether the CLI is installed
+ *      locally in a project or globally, under npm, yarn, or pnpm (redoc is an
+ *      optional dependency, so the package manager places it alongside the CLI);
+ *   2. from the user's project (cwd) — covers a globally-installed CLI using a
+ *      redoc that lives in the current project.
+ */
+function redocResolvers(): ((id: string) => string)[] {
+  const fromCli = createRequire(import.meta.url)
+  const fromCwd = createRequire(path.join(process.cwd(), 'noop.js'))
+  return [(id) => fromCli.resolve(id), (id) => fromCwd.resolve(id)]
+}
+
+/**
+ * Load the Redoc standalone bundle from the optional `redoc` dependency.
+ * Throws a CliError with install guidance when it cannot be found in any
+ * candidate location.
+ */
+export function loadRedocBundle(
+  resolvers: ((id: string) => string)[] = redocResolvers(),
+  read: (p: string) => string = (p) => fs.readFileSync(p, 'utf8'),
+): string {
+  for (const resolve of resolvers) {
+    try {
+      return read(resolve(REDOC_BUNDLE_SPECIFIER))
+    } catch {
+      // Not found via this resolver — try the next.
+    }
+  }
+  throw new CliError(
+    '`--inline-redoc` needs the optional `redoc` package, which was not found. ' +
+      'Install it alongside the CLI with `npm i redoc` (or `yarn add redoc`, or ' +
+      '`pnpm add redoc`); add `-g`/`global` if you installed this CLI globally, ' +
+      'or run it from a project that has `redoc` installed.',
+    ExitCode.USER_ERROR,
+  )
 }
 
 const command = buildCommand<CliFlags, [file?: string], LocalContext>({
