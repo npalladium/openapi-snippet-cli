@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const REPO_ROOT = new URL('..', import.meta.url).pathname
@@ -285,6 +285,30 @@ describe('build pipeline', () => {
     assert.ok(
       body.includes('OpenapiSnippetCli') || body.includes('openapi-snippet'),
       'dist/cli/index.js should reference the CLI class or command name',
+    )
+  })
+})
+
+describe('dependency hygiene', () => {
+  const pkg = loadJson(join(REPO_ROOT, 'package.json')) as JsonObject
+  const deps = (pkg.dependencies ?? {}) as Record<string, string>
+  const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>
+
+  const srcFiles = readdirSync(join(REPO_ROOT, 'src'), { recursive: true })
+    .map((p) => String(p))
+    .filter((p) => p.endsWith('.ts'))
+    .map((p) => loadText(join(REPO_ROOT, 'src', p)))
+  const allSrc = srcFiles.join('\n')
+
+  it('does not depend on lodash (dead dependency — cloneDeep was dropped)', () => {
+    assert.ok(!deps.lodash, 'lodash should not be a runtime dependency')
+    assert.ok(!devDeps['@types/lodash'], '@types/lodash should not be a devDependency')
+  })
+
+  it('does not import lodash anywhere in src/', () => {
+    assert.ok(
+      !/from ['"]lodash|require\(['"]lodash/.test(allSrc),
+      'no src file should import lodash',
     )
   })
 })
