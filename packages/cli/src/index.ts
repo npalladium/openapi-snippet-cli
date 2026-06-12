@@ -10,7 +10,10 @@ import {
   loadSpec,
   type RenderHtmlOptions,
   renderHtml,
+  renderTagIndexHtml,
   serializeChunked,
+  slugifyTag,
+  splitByTag,
 } from '@openapi-snippet/core'
 import {
   buildApplication,
@@ -93,6 +96,7 @@ interface CliFlags {
   readonly skipErrors: boolean
   readonly inlineRedoc: boolean
   readonly smartSamples: boolean
+  readonly splitByTag: boolean
 }
 
 const pkgVersion = (() => {
@@ -175,6 +179,31 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   const htmlOptions: RenderHtmlOptions | undefined =
     ext === 'html' && flags.inlineRedoc ? { inlineBundle: loadRedocBundle() } : undefined
 
+  if (flags.splitByTag) {
+    if (flags.dryRun) {
+      throw new CliError(
+        '--split-by-tag writes a folder and cannot be combined with --dry-run.',
+        ExitCode.USER_ERROR,
+      )
+    }
+    writeSplitByTag(proc, api, targets, ext, injectOptions, htmlOptions, flags.output)
+    return
+  }
+
+  writeSingleOutput(proc, api, targets, ext, flags, injectOptions, htmlOptions, useChunked)
+}
+
+/** Dry-run to stdout, or write a single output file (chunked YAML or one-shot). */
+function writeSingleOutput(
+  proc: NodeJS.Process,
+  api: OpenAPI.Document,
+  targets: readonly string[],
+  ext: 'yaml' | 'json' | 'html',
+  flags: CliFlags,
+  injectOptions: InjectOptions,
+  htmlOptions: RenderHtmlOptions | undefined,
+  useChunked: boolean,
+): void {
   if (flags.dryRun) {
     if (useChunked) {
       serializeChunked(api, targets, 'yaml', flags.chunkSize, proc.stdout as never, injectOptions)
@@ -282,6 +311,46 @@ function serialize(
   return JSON.stringify(api, null, 2)
 }
 
+/** Drop a trailing known output extension so `--output` can name a folder. */
+function stripKnownExt(p: string): string {
+  return p.replace(/\.(ya?ml|json|html?)$/i, '')
+}
+
+/**
+ * Enrich, split the document by tag, and write one file per tag into a folder
+ * (derived from --output). For HTML, also writes an `index.html` linking the
+ * per-tag pages. Components in each file are pruned to that tag's $ref closure.
+ */
+function writeSplitByTag(
+  proc: NodeJS.Process,
+  api: OpenAPI.Document,
+  targets: readonly string[],
+  ext: 'yaml' | 'json' | 'html',
+  injectOptions: InjectOptions,
+  htmlOptions: RenderHtmlOptions | undefined,
+  output: string,
+): void {
+  const enriched = injectSnippets(api, targets, injectOptions)
+  const docs = splitByTag(enriched)
+  const dir = path.resolve(stripKnownExt(output))
+  fs.mkdirSync(dir, { recursive: true })
+
+  const entries: { tag: string; href: string }[] = []
+  for (const { tag, document } of docs) {
+    const href = `${slugifyTag(tag)}.${ext}`
+    fs.writeFileSync(path.join(dir, href), serialize(document, ext, htmlOptions))
+    entries.push({ tag, href })
+    trace('wrote %s (%d paths)', href, Object.keys(document.paths ?? {}).length)
+  }
+
+  if (ext === 'html') {
+    const title = (api as { info?: { title?: string } }).info?.title ?? 'API documentation'
+    fs.writeFileSync(path.join(dir, 'index.html'), renderTagIndexHtml(title, entries))
+  }
+
+  proc.stderr.write(`Wrote ${entries.length} ${ext} file(s) to ${dir}\n`)
+}
+
 const command = buildCommand<CliFlags, [file?: string], LocalContext>({
   docs: {
     brief: 'Add code snippets to an OpenAPI spec in redoc style (x-codeSamples)',
@@ -371,6 +440,13 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
         brief:
           'fill un-annotated string fields in sample bodies/params with realistic values ' +
           'inferred from their names (email->user@example.com, *_id->a uuid, ...) instead of "string"',
+        default: false,
+      },
+      splitByTag: {
+        kind: 'boolean',
+        brief:
+          'write a folder with one file per tag (--output is treated as a directory). ' +
+          'Components are pruned to each tag, and -e html also emits an index.html.',
         default: false,
       },
     },

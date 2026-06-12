@@ -737,3 +737,108 @@ describe('CLI — --smart-samples', () => {
     assert.match(src, /"email":\s*"[^"]*@[^"]*"/)
   })
 })
+
+// Two tags, one shared (multi-tag) operation, plus an untagged one, and a
+// schema referenced by only one tag — to exercise per-tag component pruning.
+const TAGGED_SPEC = JSON.stringify({
+  openapi: '3.0.0',
+  info: { title: 'Tagged API', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
+  tags: [{ name: 'pets' }, { name: 'store' }],
+  paths: {
+    '/pets': {
+      get: { operationId: 'listPets', tags: ['pets'], responses: { '200': { description: 'OK' } } },
+    },
+    '/orders': {
+      post: {
+        operationId: 'addOrder',
+        tags: ['store'],
+        requestBody: {
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Order' } } },
+        },
+        responses: { '201': { description: 'Created' } },
+      },
+    },
+    '/ping': { get: { operationId: 'ping', responses: { '200': { description: 'OK' } } } },
+  },
+  components: {
+    schemas: { Order: { type: 'object', properties: { id: { type: 'string' } } } },
+  },
+})
+
+describe('CLI — --split-by-tag', () => {
+  it('writes one yaml file per tag (plus untagged) into a folder', () => {
+    const dir = outFile('split-yaml')
+    const r = cli([
+      specFile('tagged.json', TAGGED_SPEC),
+      '-o',
+      dir,
+      '-t',
+      'shell_curl',
+      '--split-by-tag',
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    for (const f of ['pets.yaml', 'store.yaml', 'untagged.yaml']) {
+      assert.ok(existsSync(join(dir, f)), `expected ${f}`)
+    }
+    // pets file has /pets only; store file has /orders only
+    assert.ok(readYaml(join(dir, 'pets.yaml')).paths['/pets'])
+    assert.ok(!readYaml(join(dir, 'pets.yaml')).paths['/orders'])
+    assert.ok(readYaml(join(dir, 'untagged.yaml')).paths['/ping'])
+  })
+
+  it('prunes components to the referencing tag only', () => {
+    const dir = outFile('split-prune')
+    const r = cli([
+      specFile('tagged.json', TAGGED_SPEC),
+      '-o',
+      dir,
+      '-t',
+      'shell_curl',
+      '--split-by-tag',
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    const store = readYaml(join(dir, 'store.yaml')) as unknown as {
+      components?: { schemas?: Record<string, unknown> }
+    }
+    const pets = readYaml(join(dir, 'pets.yaml')) as unknown as {
+      components?: { schemas?: Record<string, unknown> }
+    }
+    assert.ok(store.components?.schemas?.Order, 'store should keep the Order schema it refs')
+    assert.ok(!pets.components?.schemas?.Order, 'pets must not carry the unreferenced Order schema')
+  })
+
+  it('emits an index.html linking each tag page for -e html', () => {
+    const dir = outFile('split-html')
+    const r = cli([
+      specFile('tagged.json', TAGGED_SPEC),
+      '-o',
+      dir,
+      '-e',
+      'html',
+      '-t',
+      'shell_curl',
+      '--split-by-tag',
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(existsSync(join(dir, 'index.html')))
+    assert.ok(existsSync(join(dir, 'pets.html')))
+    const index = readFileSync(join(dir, 'index.html'), 'utf8')
+    assert.match(index, /href="pets\.html"/)
+    assert.match(index, /href="store\.html"/)
+  })
+
+  it('rejects combining --split-by-tag with --dry-run', () => {
+    const r = cli([
+      specFile('tagged.json', TAGGED_SPEC),
+      '-o',
+      outFile('split-dry'),
+      '--split-by-tag',
+      '--dry-run',
+      '-t',
+      'shell_curl',
+    ])
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /cannot be combined with --dry-run/i)
+  })
+})
