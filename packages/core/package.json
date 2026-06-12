@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@readme/openapi-parser": "^5.5.0",
-    "httpsnippet": "^3.0.9",
+    "httpsnippet": "^3.0.10",
     "js-yaml": "^4.2.0",
     "openapi-sampler": "^1.6.2",
     "openapi-types": "^12.1.3",
