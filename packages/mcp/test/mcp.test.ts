@@ -4,11 +4,13 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { OpenAPI } from 'openapi-types'
-import { buildMcpServer } from '../src/mcp/server.ts'
-import * as tools from '../src/mcp/tools.ts'
+import { buildMcpServer } from '../src/server.ts'
+import * as tools from '../src/tools.ts'
 
-const BIN = fileURLToPath(new URL('../dist/cli/main.js', import.meta.url))
-const FIXTURE = fileURLToPath(new URL('./fixtures/petstore-3.0.yaml', import.meta.url))
+const BIN = fileURLToPath(new URL('../dist/main.js', import.meta.url))
+const FIXTURE = fileURLToPath(
+  new URL('../../core/test/fixtures/petstore-3.0.yaml', import.meta.url),
+)
 
 const spec = {
   openapi: '3.0.0',
@@ -118,8 +120,8 @@ describe('mcp server (in-memory round trip)', () => {
 })
 
 describe('mcp command (spawned over stdio)', () => {
-  it('serves the petstore spec via the built `mcp` subcommand', async () => {
-    const transport = new StdioClientTransport({ command: 'node', args: [BIN, 'mcp', FIXTURE] })
+  it('serves the petstore spec via the built openapi-snippet-mcp binary', async () => {
+    const transport = new StdioClientTransport({ command: 'node', args: [BIN, FIXTURE] })
     const client = new Client({ name: 'e2e-client', version: '1.0.0' })
     await client.connect(transport)
     try {

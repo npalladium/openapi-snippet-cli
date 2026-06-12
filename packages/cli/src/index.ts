@@ -2,25 +2,27 @@ import * as fs from 'node:fs'
 import { createRequire } from 'node:module'
 import * as path from 'node:path'
 import { debuglog, format } from 'node:util'
-import { dereference, parse as parseOpenAPI } from '@readme/openapi-parser'
+import {
+  CliError,
+  ExitCode,
+  type InjectOptions,
+  injectSnippets,
+  loadSpec,
+  type RenderHtmlOptions,
+  renderHtml,
+  serializeChunked,
+} from '@openapi-snippet/core'
 import {
   buildApplication,
   buildCommand,
-  buildRouteMap,
   type CommandContext,
   numberParser,
   run,
 } from '@stricli/core'
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
-import { runMcpStdio } from '../mcp/server.ts'
-import {
-  type InjectOptions,
-  injectSnippets,
-  type RenderHtmlOptions,
-  renderHtml,
-  serializeChunked,
-} from '../pipeline.ts'
+
+export { CliError, ExitCode } from '@openapi-snippet/core'
 
 /**
  * Warn when the no-chunk path would dominate runtime on a large spec.
@@ -56,14 +58,6 @@ export const allTargets = [
   'swift_nsurlsession',
 ]
 
-/** Exit codes per the project convention. */
-export const ExitCode = {
-  OK: 0,
-  USER_ERROR: 1,
-  INTERNAL_ERROR: 2,
-  NETWORK_ERROR: 3,
-} as const
-
 const debug = debuglog('openapi-snippet')
 
 /** Set by --verbose; mirrors trace output to stderr without NODE_DEBUG. */
@@ -79,16 +73,6 @@ function trace(fmt: string, ...args: unknown[]): void {
     debug(fmt, ...args)
   } else if (verbose) {
     process.stderr.write(`openapi-snippet ${format(fmt, ...args)}\n`)
-  }
-}
-
-/** Error carrying the exit code the CLI should terminate with. */
-export class CliError extends Error {
-  readonly exitCode: number
-  constructor(message: string, exitCode: number) {
-    super(message)
-    this.name = 'CliError'
-    this.exitCode = exitCode
   }
 }
 
@@ -257,6 +241,45 @@ export function loadRedocBundle(
   )
 }
 
+function resolveInput(
+  proc: NodeJS.Process,
+  file: string | undefined,
+  stdin: boolean,
+): { source: string; stdin: boolean } {
+  if (file) return { source: file, stdin: false }
+  // No positional value. Read from stdin when piped (the --stdin flag is an
+  // explicit signal of the same intent). A TTY with no input is an error.
+  if (stdin || !proc.stdin.isTTY) return { source: '', stdin: true }
+  throw new CliError(
+    'No input provided. Pass a file path/URL or pipe a spec on stdin.',
+    ExitCode.USER_ERROR,
+  )
+}
+
+function resolveTargets(input: readonly string[] | undefined): string[] {
+  const inputTargets = input?.flatMap((t) => t.split(',')) ?? []
+  const resolved = (inputTargets.length ? inputTargets : allTargets)
+    .map((arg) => allTargets.find((target) => target.startsWith(arg)))
+    .filter((t): t is string => t !== undefined)
+  if (inputTargets.length && resolved.length === 0) {
+    throw new CliError(
+      `No valid --targets matched: ${inputTargets.join(', ')}. Run with --list-targets to see valid values.`,
+      ExitCode.USER_ERROR,
+    )
+  }
+  return resolved
+}
+
+function serialize(
+  api: OpenAPI.Document,
+  ext: 'yaml' | 'json' | 'html',
+  htmlOptions?: RenderHtmlOptions,
+): string {
+  if (ext === 'yaml') return yaml.dump(api)
+  if (ext === 'html') return renderHtml(api, htmlOptions)
+  return JSON.stringify(api, null, 2)
+}
+
 const command = buildCommand<CliFlags, [file?: string], LocalContext>({
   docs: {
     brief: 'Add code snippets to an OpenAPI spec in redoc style (x-codeSamples)',
@@ -351,157 +374,8 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
   func: runSnippets,
 })
 
-function resolveInput(
-  proc: NodeJS.Process,
-  file: string | undefined,
-  stdin: boolean,
-): { source: string; stdin: boolean } {
-  if (file) return { source: file, stdin: false }
-  // No positional value. Read from stdin when piped (the --stdin flag is an
-  // explicit signal of the same intent). A TTY with no input is an error.
-  if (stdin || !proc.stdin.isTTY) return { source: '', stdin: true }
-  throw new CliError(
-    'No input provided. Pass a file path/URL or pipe a spec on stdin.',
-    ExitCode.USER_ERROR,
-  )
-}
-
-async function loadSpec(input: { source: string; stdin: boolean }): Promise<OpenAPI.Document> {
-  if (input.source.startsWith('http://') || input.source.startsWith('https://')) {
-    return loadFromUrl(input.source)
-  }
-  if (input.stdin) {
-    return parseContent(await readStdin())
-  }
-  // A value that doesn't reference an existing local file is treated as raw
-  // spec content; otherwise let the parser resolve the file and its $refs.
-  if (input.source !== '' && !fs.existsSync(input.source)) {
-    return parseContent(input.source)
-  }
-  return parseOpenAPI(input.source) as unknown as OpenAPI.Document
-}
-
-function parseContent(text: string): OpenAPI.Document {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    parsed = yaml.load(text)
-  }
-  // biome-ignore lint/suspicious/noExplicitAny: parser expects APIDocument which we can't statically know after JSON.parse / yaml.load
-  return parseOpenAPI(parsed as any) as unknown as OpenAPI.Document
-}
-
-async function loadFromUrl(url: string): Promise<OpenAPI.Document> {
-  let res: Response
-  try {
-    res = await fetch(url)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    throw new CliError(`Network error fetching ${url}: ${msg}`, ExitCode.NETWORK_ERROR)
-  }
-  if (!res.ok) {
-    throw new CliError(
-      `Failed to fetch spec: HTTP ${res.status} ${res.statusText} — ${url}`,
-      ExitCode.NETWORK_ERROR,
-    )
-  }
-  return parseContent(await res.text())
-}
-
-function resolveTargets(input: readonly string[] | undefined): string[] {
-  const inputTargets = input?.flatMap((t) => t.split(',')) ?? []
-  const resolved = (inputTargets.length ? inputTargets : allTargets)
-    .map((arg) => allTargets.find((target) => target.startsWith(arg)))
-    .filter((t): t is string => t !== undefined)
-  if (inputTargets.length && resolved.length === 0) {
-    throw new CliError(
-      `No valid --targets matched: ${inputTargets.join(', ')}. Run with --list-targets to see valid values.`,
-      ExitCode.USER_ERROR,
-    )
-  }
-  return resolved
-}
-
-function serialize(
-  api: OpenAPI.Document,
-  ext: 'yaml' | 'json' | 'html',
-  htmlOptions?: RenderHtmlOptions,
-): string {
-  if (ext === 'yaml') return yaml.dump(api)
-  if (ext === 'html') return renderHtml(api, htmlOptions)
-  return JSON.stringify(api, null, 2)
-}
-
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) {
-    throw new CliError(
-      'No data on stdin. Pipe a spec into the command, e.g. `cat spec.yaml | openapi-snippet --stdin`.',
-      ExitCode.USER_ERROR,
-    )
-  }
-  const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
-  }
-  return Buffer.concat(chunks).toString('utf8')
-}
-
-async function runMcp(
-  this: LocalContext,
-  _flags: Record<string, never>,
-  file?: string,
-): Promise<Error | undefined> {
-  try {
-    if (!file) {
-      throw new CliError(
-        'The mcp command requires a spec file path or URL (stdin is reserved for the MCP transport).',
-        ExitCode.USER_ERROR,
-      )
-    }
-    const parsed = await loadSpec({ source: file, stdin: false })
-    // Dereference so tools return resolved schemas; keep circular refs as-is.
-    const api = (await dereference(parsed, {
-      dereference: { circular: 'ignore' },
-    })) as unknown as OpenAPI.Document
-    await runMcpStdio(api, { name: 'openapi-snippet', version: pkgVersion })
-    return undefined
-  } catch (err) {
-    return err instanceof Error ? err : new Error(String(err))
-  }
-}
-
-const mcpCommand = buildCommand<Record<string, never>, [file?: string], LocalContext>({
-  docs: {
-    brief: 'Run a stdio MCP server exposing tools to explore the given OpenAPI spec',
-  },
-  parameters: {
-    positional: {
-      kind: 'tuple',
-      parameters: [
-        {
-          brief: 'input openapi document — local file path or http/https URL',
-          parse: String,
-          placeholder: 'file',
-          optional: true,
-        },
-      ],
-    },
-    flags: {},
-  },
-  func: runMcp,
-})
-
-const routes = buildRouteMap({
-  routes: { mcp: mcpCommand, add: command },
-  defaultCommand: 'add',
-  docs: {
-    brief: 'Add code snippets to an OpenAPI spec (x-codeSamples); also serve it over MCP',
-  },
-})
-
 /** The Stricli application — exported for the launcher and for tests. */
-export const app = buildApplication<LocalContext>(routes, {
+export const app = buildApplication<LocalContext>(command, {
   name: 'openapi-snippet',
   versionInfo: { currentVersion: pkgVersion },
   scanner: { caseStyle: 'allow-kebab-for-camel' },

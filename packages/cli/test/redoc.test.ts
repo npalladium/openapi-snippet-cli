@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { CliError, loadRedocBundle } from '../src/cli/index.ts'
+import { CliError, loadRedocBundle } from '../src/index.ts'
 
 describe('loadRedocBundle (optional, multi-location)', () => {
   it('returns the bundle from the first resolver that succeeds', () => {

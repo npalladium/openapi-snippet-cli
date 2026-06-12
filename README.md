@@ -22,11 +22,25 @@ Adds openapi snippets using `openapi-snippet` module in redoc style (x-codeSampl
 - Node.js **22** (active LTS) or **24** (latest LTS). Older Node versions are not supported.
 - pnpm 9+.
 
+## Packages
+
+This is a pnpm monorepo with three packages:
+
+| package | bin | purpose |
+|---------|-----|---------|
+| [`@openapi-snippet/core`](packages/core) | – | shared library: snippet generation, injection, spec loading, HTML rendering |
+| [`openapi-snippet-cli`](packages/cli) | `openapi-snippet` | the snippet CLI (yaml/json/html output) |
+| [`openapi-snippet-mcp`](packages/mcp) | `openapi-snippet-mcp` | stdio MCP server for exploring a spec |
+
 ## From npm
 
 ```sh-session
-$ npm install -g openapi-snippet-cli  # original
+$ npm install -g openapi-snippet-cli      # the `openapi-snippet` command
+$ npm install -g openapi-snippet-mcp      # the `openapi-snippet-mcp` command
 ```
+
+The two CLIs are independent: installing the snippet CLI does not pull the MCP
+SDK, and installing the MCP CLI does not pull redoc.
 
 ## From Source
 
@@ -34,44 +48,44 @@ $ npm install -g openapi-snippet-cli  # original
 $ git clone https://github.com/npalladium/openapi-snippet-cli.git
 $ cd openapi-snippet-cli
 $ pnpm install
+$ pnpm build      # builds core, then the two CLIs (topological order)
 ```
 
 ### Dev (run from source)
 
 ```sh-session
-$ pnpm dev -- schema.yaml -o dist/schema.yaml
+$ pnpm --filter openapi-snippet-cli dev -- schema.yaml -o dist/schema.yaml
 ```
 
-`pnpm dev` runs the TypeScript source directly through `tsx` — no build step
+`dev` runs the TypeScript source directly through `tsx` — no build step
 required. Edit a file, rerun.
 
-### Build (production)
+### Run the built binaries
 
 ```sh-session
-$ pnpm build      # produces dist/ via esbuild + tsc
-$ node dist/cli/main.js schema.yaml -o dist/schema.yaml
-# or, equivalently:
-$ pnpm start schema.yaml -o dist/schema.yaml
+$ node packages/cli/dist/main.js schema.yaml -o dist/schema.yaml
+$ node packages/mcp/dist/main.js schema.yaml
 ```
 
-Or link globally to use the `openapi-snippet` command anywhere:
+Or link a package globally to use its command anywhere:
 
 ```sh-session
-$ pnpm build
-$ pnpm link --global
+$ pnpm --filter openapi-snippet-cli build
+$ cd packages/cli && pnpm link --global
 $ openapi-snippet schema.yaml -o dist/schema.yaml
 ```
 
 ## Build Pipeline
 
-- `pnpm typecheck` — runs the **native** TypeScript compiler (`tsgo`) for fast type-checking.
-- `pnpm build:types` — emits `.d.ts` files via `tsc --emitDeclarationOnly`.
-- `pnpm build:js` — bundles the library entry (`dist/cli/index.js`) with **esbuild** (ESM, external packages).
-- `pnpm build:bin` — bundles the executable (`dist/cli/main.js`) with a `#!/usr/bin/env node` shebang; this is the `bin` target.
-- `pnpm build` — runs `build:types`, `build:js`, and `build:bin`.
-- `pnpm dev` — runs the CLI from source via `tsx` (no build).
-- `pnpm start` — runs the built executable (`node dist/cli/main.js`).
-- `pnpm test:watch` — runs the mocha test suite in watch mode (uses `tsx`).
+Run from the repo root; scripts fan out to the packages with `pnpm -r`:
+
+- `pnpm typecheck` — type-checks every package with `tsc --noEmit`.
+- `pnpm build` — builds every package (topological): `@openapi-snippet/core`
+  emits its bundle + `.d.ts`; the CLIs bundle their executable (`dist/main.js`,
+  with a `#!/usr/bin/env node` shebang) via **esbuild**.
+- `pnpm test` — runs each package's mocha suite (via `tsx`).
+- `pnpm verify` — `check` + `build` + `typecheck` + `test` (build precedes
+  typecheck/test because the CLIs resolve the built core).
 
 # Usage
 ## Adding Snippets to a Schema
@@ -187,16 +201,17 @@ $ openapi-snippet schema.yaml --skip-errors -o dist/schema.yaml
 Skipped GET /bad: Required parameters missing
 ```
 
-## MCP server (`openapi-snippet mcp`)
+## MCP server (`openapi-snippet-mcp`)
 
-The `mcp` subcommand runs a [Model Context Protocol](https://modelcontextprotocol.io)
-server over stdio that lets an LLM explore a given OpenAPI spec. Inspired by
+The `openapi-snippet-mcp` CLI (the [`openapi-snippet-mcp`](packages/mcp) package)
+runs a [Model Context Protocol](https://modelcontextprotocol.io) server over
+stdio that lets an LLM explore a given OpenAPI spec. Inspired by
 [swagger-json-mcp](https://github.com/LLM-MCP-Servers/swagger-json-mcp), adapted
 to a single spec (passed as a file path or URL — stdin is reserved for the MCP
 transport) and dereferenced so schemas come back resolved.
 
 ```sh-session
-$ openapi-snippet mcp https://api.example.com/openapi.json
+$ openapi-snippet-mcp https://api.example.com/openapi.json
 ```
 
 Example MCP client configuration:
@@ -205,8 +220,8 @@ Example MCP client configuration:
 {
   "mcpServers": {
     "openapi-snippet": {
-      "command": "openapi-snippet",
-      "args": ["mcp", "https://api.example.com/openapi.json"]
+      "command": "openapi-snippet-mcp",
+      "args": ["https://api.example.com/openapi.json"]
     }
   }
 }
@@ -235,8 +250,8 @@ Tools exposed:
 # Arguments
 ```
 USAGE
-  $ openapi-snippet [FILE]        # add snippets (default command)
-  $ openapi-snippet mcp [FILE]    # run the stdio MCP server (see above)
+  $ openapi-snippet [FILE]        # add snippets
+  $ openapi-snippet-mcp [FILE]    # run the stdio MCP server (see above)
 
 ARGUMENTS
   FILE  input openapi document. It will attempt to resolve references (including both internal and external ones)

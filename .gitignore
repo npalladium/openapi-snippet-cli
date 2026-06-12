@@ -2,8 +2,8 @@
 *-error.log
 /.nyc_output
 /coverage
-/dist
-/lib
+dist/
+lib/
 /out
 /goals
 /package-lock.json

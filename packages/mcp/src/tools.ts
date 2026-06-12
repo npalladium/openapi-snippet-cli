@@ -3,9 +3,8 @@
  * dereferenced) OpenAPI document and returns plain data, so it can be unit
  * tested without the MCP transport.
  */
+import { getEndpointSnippets, HTTP_METHODS } from '@openapi-snippet/core'
 import type { OpenAPI } from 'openapi-types'
-import { getEndpointSnippets } from '../openapi-snippet/index.ts'
-import { HTTP_METHODS } from '../pipeline.ts'
 
 type AnyRecord = Record<string, unknown>
 

@@ -1,80 +1,36 @@
 {
-  "name": "openapi-snippet-cli",
-  "description": "Adds openapi snippets using openapi-snippet module in redoc style",
-  "version": "0.2.1",
-  "author": "Nikhil Pallamreddy",
+  "name": "openapi-snippet-monorepo",
+  "private": true,
   "type": "module",
-  "bin": {
-    "openapi-snippet": "dist/cli/main.js"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/cli/index.d.ts",
-      "import": "./dist/cli/index.js"
-    }
-  },
+  "description": "Monorepo for openapi-snippet (snippet CLI), openapi-snippet-mcp (MCP CLI), and their shared core",
+  "author": "Nikhil Pallamreddy",
+  "license": "MIT",
+  "homepage": "https://github.com/npalladium/openapi-snippet-cli",
   "bugs": "https://github.com/npalladium/openapi-snippet-cli/issues",
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@readme/openapi-parser": "^5.5.0",
-    "@stricli/core": "^1.2.7",
-    "httpsnippet": "^3.0.9",
-    "js-yaml": "^4.2.0",
-    "openapi-sampler": "^1.6.2",
-    "openapi-types": "^12.1.3",
-    "tslib": "^2",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.4",
-    "@types/js-yaml": "^4",
-    "@types/mocha": "^10",
-    "@types/node": "^20",
-    "@typescript/native-preview": "7.0.0-dev.20260610.1",
-    "c8": "^10",
-    "esbuild": "^0.28.0",
-    "mocha": "^10",
-    "tsx": "^4.22.4",
-    "typescript": "^5.9.3"
-  },
+  "repository": "npalladium/openapi-snippet-cli",
   "engines": {
     "node": ">=22.0.0"
   },
-  "files": [
-    "/dist"
-  ],
-  "homepage": "https://github.com/npalladium/openapi-snippet-cli",
-  "keywords": [
-    "openapi",
-    "swagger",
-    "snippets",
-    "openapi-snippets",
-    "cli"
-  ],
-  "license": "MIT",
-  "main": "dist/cli/index.js",
-  "types": "dist/cli/index.d.ts",
-  "repository": "npalladium/openapi-snippet-cli",
   "scripts": {
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "typecheck": "tsgo --noEmit",
-    "build:types": "tsc -b --emitDeclarationOnly",
-    "build:js": "esbuild src/cli/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/cli/index.js",
-    "build:bin": "esbuild src/cli/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --banner:js=\"#!/usr/bin/env node\" --outfile=dist/cli/main.js",
-    "build": "pnpm build:types && pnpm build:js && pnpm build:bin",
-    "dev": "tsx src/dev.ts",
-    "start": "node dist/cli/main.js",
-    "test": "c8 mocha --forbid-only",
-    "test:watch": "mocha --watch",
-    "verify": "pnpm check && pnpm typecheck && pnpm build && pnpm test",
-    "ci": "pnpm run verify",
-    "prepack": "rm -rf dist && pnpm build"
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "dev": "pnpm --filter openapi-snippet-cli dev",
+    "verify": "pnpm check && pnpm build && pnpm typecheck && pnpm test"
   },
-  "optionalDependencies": {
-    "redoc": "^2.5.3"
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
+    "@types/js-yaml": "^4",
+    "@types/mocha": "^10",
+    "@types/node": "^20",
+    "esbuild": "^0.28.0",
+    "mocha": "^10",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3"
   }
 }
