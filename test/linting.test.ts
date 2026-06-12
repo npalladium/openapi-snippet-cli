@@ -312,3 +312,27 @@ describe('dependency hygiene', () => {
     )
   })
 })
+
+describe('LICENSE', () => {
+  const pkg = loadJson(join(REPO_ROOT, 'package.json')) as JsonObject
+
+  it('declares MIT in package.json', () => {
+    assert.equal(pkg.license, 'MIT')
+  })
+
+  it('ships a LICENSE file with the MIT grant text', () => {
+    const licensePath = join(REPO_ROOT, 'LICENSE')
+    assert.ok(existsSync(licensePath), 'expected a LICENSE file at the repo root')
+    const body = loadText(licensePath)
+    assert.match(body, /MIT License/i)
+    assert.match(body, /Permission is hereby granted, free of charge/)
+  })
+
+  it('retains the copyright holders credited in the README', () => {
+    const body = loadText(join(REPO_ROOT, 'LICENSE'))
+    // This is a fork; the MIT notice must keep the upstream authors.
+    assert.match(body, /Nikhil Pallamreddy/)
+    assert.match(body, /Richard Kabiling/)
+    assert.match(body, /Erik Wittern/)
+  })
+})
