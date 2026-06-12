@@ -49,7 +49,9 @@ required. Edit a file, rerun.
 
 ```sh-session
 $ pnpm build      # produces dist/ via esbuild + tsc
-$ node bin/run schema.yaml -o dist/schema.yaml
+$ node dist/cli/main.js schema.yaml -o dist/schema.yaml
+# or, equivalently:
+$ pnpm start schema.yaml -o dist/schema.yaml
 ```
 
 Or link globally to use the `openapi-snippet` command anywhere:
@@ -64,9 +66,11 @@ $ openapi-snippet schema.yaml -o dist/schema.yaml
 
 - `pnpm typecheck` — runs the **native** TypeScript compiler (`tsgo`) for fast type-checking.
 - `pnpm build:types` — emits `.d.ts` files via `tsc --emitDeclarationOnly`.
-- `pnpm build:js` — bundles the CLI entrypoint with **esbuild** (single ESM output, external packages).
-- `pnpm build` — runs both `build:types` and `build:js`.
+- `pnpm build:js` — bundles the library entry (`dist/cli/index.js`) with **esbuild** (ESM, external packages).
+- `pnpm build:bin` — bundles the executable (`dist/cli/main.js`) with a `#!/usr/bin/env node` shebang; this is the `bin` target.
+- `pnpm build` — runs `build:types`, `build:js`, and `build:bin`.
 - `pnpm dev` — runs the CLI from source via `tsx` (no build).
+- `pnpm start` — runs the built executable (`node dist/cli/main.js`).
 - `pnpm test:watch` — runs the mocha test suite in watch mode (uses `tsx`).
 
 # Usage

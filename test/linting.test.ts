@@ -254,22 +254,17 @@ describe('mocha config', () => {
   })
 })
 
-describe('bin/run', () => {
-  const body = loadText(join(REPO_ROOT, 'bin/run'))
+describe('bin entry', () => {
+  const pkg = loadJson(join(REPO_ROOT, 'package.json')) as JsonObject
+  const bin = pkg.bin as Record<string, string>
 
-  it('is a single-mode production launcher (no dev branch)', () => {
-    assert.ok(
-      !body.includes('ts-node') && !body.includes('fs.existsSync(project)'),
-      'bin/run should not contain the legacy dev branch with ts-node or a tsconfig check',
-    )
+  it('points the openapi-snippet binary at the built dist/cli/main.js', () => {
+    assert.equal(bin['openapi-snippet'], 'dist/cli/main.js')
   })
 
-  it('invokes the compiled CLI from dist/ via stricli', () => {
-    assert.ok(
-      body.includes('dist/cli/index.js'),
-      'expected bin/run to import the compiled CLI from dist/',
-    )
-    assert.ok(!body.includes('@oclif'), 'bin/run should no longer reference oclif')
+  it('no longer ships a hand-written bin/run shim', () => {
+    assert.ok(!existsSync(join(REPO_ROOT, 'bin/run')), 'bin/run should be removed')
+    assert.ok(!existsSync(join(REPO_ROOT, 'bin/run.cmd')), 'bin/run.cmd should be removed')
   })
 })
 
@@ -290,6 +285,22 @@ describe('build pipeline', () => {
       body.includes('OpenapiSnippetCli') || body.includes('openapi-snippet'),
       'dist/cli/index.js should reference the CLI class or command name',
     )
+    // The library bundle must NOT carry a shebang or auto-run the CLI on import.
+    assert.ok(!body.startsWith('#!'), 'dist/cli/index.js should not start with a shebang')
+  })
+
+  it('produces an executable dist/cli/main.js with a node shebang', () => {
+    const main = join(REPO_ROOT, 'dist/cli/main.js')
+    if (!existsSync(main)) {
+      execFileSync('node', [join(REPO_ROOT, 'node_modules/.bin/pnpm'), 'build'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    }
+    const body = readFileSync(main, 'utf8')
+    assert.ok(body.startsWith('#!/usr/bin/env node\n'), 'main.js should start with a node shebang')
+    assert.ok(body.includes('runMain'), 'main.js should invoke runMain')
   })
 })
 

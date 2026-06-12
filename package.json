@@ -5,7 +5,7 @@
   "author": "Nikhil Pallamreddy",
   "type": "module",
   "bin": {
-    "openapi-snippet": "./bin/run"
+    "openapi-snippet": "dist/cli/main.js"
   },
   "exports": {
     ".": {
@@ -39,7 +39,6 @@
     "node": ">=22.0.0"
   },
   "files": [
-    "/bin",
     "/dist"
   ],
   "homepage": "https://github.com/npalladium/openapi-snippet-cli",
@@ -63,8 +62,10 @@
     "typecheck": "tsgo --noEmit",
     "build:types": "tsc -b --emitDeclarationOnly",
     "build:js": "esbuild src/cli/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/cli/index.js",
-    "build": "pnpm build:types && pnpm build:js",
+    "build:bin": "esbuild src/cli/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --banner:js=\"#!/usr/bin/env node\" --outfile=dist/cli/main.js",
+    "build": "pnpm build:types && pnpm build:js && pnpm build:bin",
     "dev": "tsx src/dev.ts",
+    "start": "node dist/cli/main.js",
     "test": "c8 mocha --forbid-only",
     "test:watch": "mocha --watch",
     "verify": "pnpm check && pnpm typecheck && pnpm build && pnpm test",

@@ -1,6 +1,6 @@
 /**
  * CLI integration / smoke tests.
- * These run the actual `bin/run` script as a child process.
+ * These run the built executable (dist/cli/main.js) as a child process.
  */
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 
-const BIN = new URL('../bin/run', import.meta.url).pathname
+const BIN = new URL('../dist/cli/main.js', import.meta.url).pathname
 
 type CliResult = {
   status: number | null
