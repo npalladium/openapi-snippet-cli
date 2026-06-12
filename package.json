@@ -2,7 +2,7 @@
   "name": "openapi-snippet-monorepo",
   "private": true,
   "type": "module",
-  "description": "Monorepo for openapi-snippet (snippet CLI), openapi-snippet-mcp (MCP CLI), and their shared core",
+  "description": "Monorepo for openapi-snippet (snippet CLI), openapi-mcp (MCP CLI), and their shared core",
   "author": "Nikhil Pallamreddy",
   "license": "MIT",
   "homepage": "https://github.com/npalladium/openapi-snippet-cli",

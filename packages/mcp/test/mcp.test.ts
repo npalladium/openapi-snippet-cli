@@ -120,7 +120,7 @@ describe('mcp server (in-memory round trip)', () => {
 })
 
 describe('mcp command (spawned over stdio)', () => {
-  it('serves the petstore spec via the built openapi-snippet-mcp binary', async () => {
+  it('serves the petstore spec via the built openapi-mcp binary', async () => {
     const transport = new StdioClientTransport({ command: 'node', args: [BIN, FIXTURE] })
     const client = new Client({ name: 'e2e-client', version: '1.0.0' })
     await client.connect(transport)

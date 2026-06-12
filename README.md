@@ -6,9 +6,7 @@ Adds openapi snippets using `openapi-snippet` module in redoc style (x-codeSampl
 > **Note:** This is a maintained fork of [richardkabiling/openapi-snippet-cli](https://github.com/richardkabiling/openapi-snippet-cli), which is itself a CLI wrapper on [ErikWittern/openapi-snippet](https://github.com/ErikWittern/openapi-snippet). This fork rewrites the project in TypeScript ESM, fixes bugs, and keeps dependencies up to date. Please file issues at [npalladium/openapi-snippet-cli](https://github.com/npalladium/openapi-snippet-cli/issues), not on the original repositories.
 
 [![stricli](https://img.shields.io/badge/cli-stricli-brightgreen.svg)](https://bloomberg.github.io/stricli/)
-[![Version](https://img.shields.io/npm/v/openapi-snippet-cli.svg)](https://npmjs.org/package/openapi-snippet-cli)
-[![Downloads/week](https://img.shields.io/npm/dw/openapi-snippet-cli.svg)](https://npmjs.org/package/openapi-snippet-cli)
-[![License](https://img.shields.io/npm/l/openapi-snippet-cli.svg)](https://github.com/npalladium/openapi-snippet-cli/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/npalladium/openapi-snippet-cli/blob/main/LICENSE)
 
 * [Getting Started](#getting-started)
 * [Usage](#usage)
@@ -30,26 +28,35 @@ This is a pnpm monorepo with three packages:
 |---------|-----|---------|
 | [`@openapi-snippet/core`](packages/core) | – | shared library: snippet generation, injection, spec loading, HTML rendering |
 | [`openapi-snippet-cli`](packages/cli) | `openapi-snippet` | the snippet CLI (yaml/json/html output) |
-| [`openapi-snippet-mcp`](packages/mcp) | `openapi-snippet-mcp` | stdio MCP server for exploring a spec |
+| [`openapi-mcp`](packages/mcp) | `openapi-mcp` | stdio MCP server for exploring a spec |
 
-## From npm
+## Install from GitHub
 
-```sh-session
-$ npm install -g openapi-snippet-cli      # the `openapi-snippet` command
-$ npm install -g openapi-snippet-mcp      # the `openapi-snippet-mcp` command
-```
-
-The two CLIs are independent: installing the snippet CLI does not pull the MCP
-SDK, and installing the MCP CLI does not pull redoc.
-
-## From Source
+These packages are **not published to npm**. Install from source: clone, build,
+then link the binaries globally.
 
 ```sh-session
 $ git clone https://github.com/npalladium/openapi-snippet-cli.git
 $ cd openapi-snippet-cli
 $ pnpm install
 $ pnpm build      # builds core, then the two CLIs (topological order)
+
+# expose the global commands (each `link --global` runs inside its package)
+$ cd packages/cli && pnpm link --global && cd ../..   # the `openapi-snippet` command
+$ cd packages/mcp && pnpm link --global && cd ../..   # the `openapi-mcp` command
 ```
+
+`pnpm link --global` is the reliable path: the binaries keep their dependencies
+external (resolved at runtime), and linking from inside the workspace preserves
+the `@openapi-snippet/core` link and each package's `node_modules`. A bare
+`npm install -g <subdir>` will not work — the `workspace:*` core dependency only
+resolves within the workspace.
+
+The two CLIs are independent: linking the snippet CLI does not pull the MCP SDK,
+and linking the MCP CLI does not pull redoc.
+
+To pick up upstream changes later, `git pull`, `pnpm install`, and `pnpm build`
+again — the global links point at the built `dist/`, so no re-linking is needed.
 
 ### Dev (run from source)
 
@@ -67,13 +74,8 @@ $ node packages/cli/dist/main.js schema.yaml -o dist/schema.yaml
 $ node packages/mcp/dist/main.js schema.yaml
 ```
 
-Or link a package globally to use its command anywhere:
-
-```sh-session
-$ pnpm --filter openapi-snippet-cli build
-$ cd packages/cli && pnpm link --global
-$ openapi-snippet schema.yaml -o dist/schema.yaml
-```
+To use the commands anywhere instead of by path, link them globally — see
+[Install from GitHub](#install-from-github) above.
 
 ## Build Pipeline
 
@@ -201,9 +203,9 @@ $ openapi-snippet schema.yaml --skip-errors -o dist/schema.yaml
 Skipped GET /bad: Required parameters missing
 ```
 
-## MCP server (`openapi-snippet-mcp`)
+## MCP server (`openapi-mcp`)
 
-The `openapi-snippet-mcp` CLI (the [`openapi-snippet-mcp`](packages/mcp) package)
+The `openapi-mcp` CLI (the [`openapi-mcp`](packages/mcp) package)
 runs a [Model Context Protocol](https://modelcontextprotocol.io) server over
 stdio that lets an LLM explore a given OpenAPI spec. Inspired by
 [swagger-json-mcp](https://github.com/LLM-MCP-Servers/swagger-json-mcp), adapted
@@ -211,7 +213,7 @@ to a single spec (passed as a file path or URL — stdin is reserved for the MCP
 transport) and dereferenced so schemas come back resolved.
 
 ```sh-session
-$ openapi-snippet-mcp https://api.example.com/openapi.json
+$ openapi-mcp https://api.example.com/openapi.json
 ```
 
 Example MCP client configuration:
@@ -220,7 +222,7 @@ Example MCP client configuration:
 {
   "mcpServers": {
     "openapi-snippet": {
-      "command": "openapi-snippet-mcp",
+      "command": "openapi-mcp",
       "args": ["https://api.example.com/openapi.json"]
     }
   }
@@ -251,7 +253,7 @@ Tools exposed:
 ```
 USAGE
   $ openapi-snippet [FILE]        # add snippets
-  $ openapi-snippet-mcp [FILE]    # run the stdio MCP server (see above)
+  $ openapi-mcp [FILE]            # run the stdio MCP server (see above)
 
 ARGUMENTS
   FILE  input openapi document. It will attempt to resolve references (including both internal and external ones)

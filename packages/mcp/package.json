@@ -1,10 +1,10 @@
 {
-  "name": "openapi-snippet-mcp",
-  "version": "0.2.1",
+  "name": "openapi-mcp",
+  "version": "0.3.0",
   "description": "stdio MCP server exposing tools to explore an OpenAPI spec (with code snippets)",
   "type": "module",
   "bin": {
-    "openapi-snippet-mcp": "dist/main.js"
+    "openapi-mcp": "dist/main.js"
   },
   "files": [
     "/dist"

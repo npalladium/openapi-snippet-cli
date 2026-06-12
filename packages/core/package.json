@@ -1,6 +1,6 @@
 {
   "name": "@openapi-snippet/core",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Shared library for openapi-snippet: snippet generation, injection, spec loading, and HTML rendering",
   "type": "module",
   "main": "dist/index.js",

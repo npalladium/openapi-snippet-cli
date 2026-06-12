@@ -25,13 +25,13 @@ async function runMcp(
   try {
     if (!file) {
       throw new CliError(
-        'openapi-snippet-mcp requires a spec file path or URL (stdin is reserved for the MCP transport).',
+        'openapi-mcp requires a spec file path or URL (stdin is reserved for the MCP transport).',
         ExitCode.USER_ERROR,
       )
     }
     // Dereference so tools return resolved schemas; circular refs are kept.
     const api = await dereferenceSpec(await loadSpec({ source: file, stdin: false }))
-    await runMcpStdio(api, { name: 'openapi-snippet-mcp', version: pkgVersion })
+    await runMcpStdio(api, { name: 'openapi-mcp', version: pkgVersion })
     return undefined
   } catch (err) {
     return err instanceof Error ? err : new Error(String(err))
@@ -65,7 +65,7 @@ const command = buildCommand<Record<string, never>, [file?: string], LocalContex
 
 /** The Stricli application — exported for the launcher and for tests. */
 export const app = buildApplication<LocalContext>(command, {
-  name: 'openapi-snippet-mcp',
+  name: 'openapi-mcp',
   versionInfo: { currentVersion: pkgVersion },
   determineExitCode: (exc) => (exc instanceof CliError ? exc.exitCode : ExitCode.INTERNAL_ERROR),
 })

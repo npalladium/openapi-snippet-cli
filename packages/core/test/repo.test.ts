@@ -41,7 +41,7 @@ describe('workspace layout', () => {
   it('has the three expected packages', () => {
     assert.equal(pkgOf('core').name, '@openapi-snippet/core')
     assert.equal(pkgOf('cli').name, 'openapi-snippet-cli')
-    assert.equal(pkgOf('mcp').name, 'openapi-snippet-mcp')
+    assert.equal(pkgOf('mcp').name, 'openapi-mcp')
   })
 })
 
@@ -54,7 +54,7 @@ describe('package binaries and dependencies', () => {
   })
 
   it('the MCP CLI binary points at its built executable', () => {
-    assert.equal((mcp.bin as Record<string, string>)['openapi-snippet-mcp'], 'dist/main.js')
+    assert.equal((mcp.bin as Record<string, string>)['openapi-mcp'], 'dist/main.js')
   })
 
   it('cli and mcp depend on the shared core via the workspace protocol', () => {
