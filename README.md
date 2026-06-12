@@ -244,6 +244,13 @@ $ open dist/docs/index.html
 - With `-e html`, an `index.html` linking every per-tag page is also written.
 - It can't be combined with `--dry-run` (it writes a folder, not stdout).
 
+> **Note on `--split-by-tag --inline-redoc`:** these work together but rarely
+> belong together. `--inline-redoc` embeds the full ~1 MB Redoc bundle into
+> **every** per-tag page, so a 60-tag spec produces ~60 MB of duplicated bundle
+> — defeating the size win that splitting buys you. Prefer the default (CDN)
+> bundle when splitting; reach for `--inline-redoc` only when you need each page
+> to be independently offline and accept the size.
+
 ## MCP server (`openapi-mcp`)
 
 The `openapi-mcp` CLI (the [`openapi-mcp`](packages/mcp) package)
