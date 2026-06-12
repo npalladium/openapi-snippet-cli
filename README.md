@@ -180,6 +180,42 @@ $ openapi-snippet schema.yaml --skip-errors -o dist/schema.yaml
 Skipped GET /bad: Required parameters missing
 ```
 
+## MCP server (`openapi-snippet mcp`)
+
+The `mcp` subcommand runs a [Model Context Protocol](https://modelcontextprotocol.io)
+server over stdio that lets an LLM explore a given OpenAPI spec. Inspired by
+[swagger-json-mcp](https://github.com/LLM-MCP-Servers/swagger-json-mcp), adapted
+to a single spec (passed as a file path or URL — stdin is reserved for the MCP
+transport) and dereferenced so schemas come back resolved.
+
+```sh-session
+$ openapi-snippet mcp https://api.example.com/openapi.json
+```
+
+Example MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "openapi-snippet": {
+      "command": "openapi-snippet",
+      "args": ["mcp", "https://api.example.com/openapi.json"]
+    }
+  }
+}
+```
+
+Tools exposed:
+
+| tool | parameters | description |
+|------|------------|-------------|
+| `get_overview` | – | title, version, and counts of paths/operations/schemas |
+| `list_endpoints` | – | every operation as `{ method, path, operationId, summary }` |
+| `get_endpoint` | `path`, `method` | the full operation object |
+| `get_schema` | `name` | a named `components.schemas` entry |
+| `search_endpoints` | `query`, `method?` | substring search over path/operationId/summary |
+| `get_code_snippets` | `path`, `method`, `targets?` | request snippets for an operation (defaults to `shell_curl`) |
+
 ## Exit codes
 
 | code | meaning                          |
@@ -192,10 +228,11 @@ Skipped GET /bad: Required parameters missing
 # Arguments
 ```
 USAGE
-  $ openapi-snippet [FILE]
+  $ openapi-snippet [FILE]        # add snippets (default command)
+  $ openapi-snippet mcp [FILE]    # run the stdio MCP server (see above)
 
 ARGUMENTS
-  FILE  input openapi document. It will attempt to resolve references (including both internal adn external ones)
+  FILE  input openapi document. It will attempt to resolve references (including both internal and external ones)
 ```
 
 # Options

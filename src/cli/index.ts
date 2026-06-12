@@ -2,16 +2,18 @@ import * as fs from 'node:fs'
 import { createRequire } from 'node:module'
 import * as path from 'node:path'
 import { debuglog, format } from 'node:util'
-import { parse as parseOpenAPI } from '@readme/openapi-parser'
+import { dereference, parse as parseOpenAPI } from '@readme/openapi-parser'
 import {
   buildApplication,
   buildCommand,
+  buildRouteMap,
   type CommandContext,
   numberParser,
   run,
 } from '@stricli/core'
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
+import { runMcpStdio } from '../mcp/server.ts'
 import {
   type InjectOptions,
   injectSnippets,
@@ -409,8 +411,61 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+async function runMcp(
+  this: LocalContext,
+  _flags: Record<string, never>,
+  file?: string,
+): Promise<Error | undefined> {
+  try {
+    if (!file) {
+      throw new CliError(
+        'The mcp command requires a spec file path or URL (stdin is reserved for the MCP transport).',
+        ExitCode.USER_ERROR,
+      )
+    }
+    const parsed = await loadSpec({ source: file, stdin: false })
+    // Dereference so tools return resolved schemas; keep circular refs as-is.
+    const api = (await dereference(parsed, {
+      dereference: { circular: 'ignore' },
+    })) as unknown as OpenAPI.Document
+    await runMcpStdio(api, { name: 'openapi-snippet', version: pkgVersion })
+    return undefined
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err))
+  }
+}
+
+const mcpCommand = buildCommand<Record<string, never>, [file?: string], LocalContext>({
+  docs: {
+    brief: 'Run a stdio MCP server exposing tools to explore the given OpenAPI spec',
+  },
+  parameters: {
+    positional: {
+      kind: 'tuple',
+      parameters: [
+        {
+          brief: 'input openapi document — local file path or http/https URL',
+          parse: String,
+          placeholder: 'file',
+          optional: true,
+        },
+      ],
+    },
+    flags: {},
+  },
+  func: runMcp,
+})
+
+const routes = buildRouteMap({
+  routes: { mcp: mcpCommand, add: command },
+  defaultCommand: 'add',
+  docs: {
+    brief: 'Add code snippets to an OpenAPI spec (x-codeSamples); also serve it over MCP',
+  },
+})
+
 /** The Stricli application — exported for the launcher and for tests. */
-export const app = buildApplication<LocalContext>(command, {
+export const app = buildApplication<LocalContext>(routes, {
   name: 'openapi-snippet',
   versionInfo: { currentVersion: pkgVersion },
   scanner: { caseStyle: 'allow-kebab-for-camel' },
