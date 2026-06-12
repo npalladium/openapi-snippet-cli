@@ -92,6 +92,7 @@ interface CliFlags {
   readonly chunkSize: number
   readonly skipErrors: boolean
   readonly inlineRedoc: boolean
+  readonly smartSamples: boolean
 }
 
 const pkgVersion = (() => {
@@ -162,6 +163,7 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
 
   const injectOptions: InjectOptions = {
     skipErrors: flags.skipErrors,
+    smartSamples: flags.smartSamples,
     onSkip: (p, m, err) => {
       proc.stderr.write(`Skipped ${m.toUpperCase()} ${p}: ${err.message}\n`)
     },
@@ -362,6 +364,13 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
       inlineRedoc: {
         kind: 'boolean',
         brief: 'with -e html, inline the Redoc bundle for a fully offline page (no CDN)',
+        default: false,
+      },
+      smartSamples: {
+        kind: 'boolean',
+        brief:
+          'fill un-annotated string fields in sample bodies/params with realistic values ' +
+          'inferred from their names (email->user@example.com, *_id->a uuid, ...) instead of "string"',
         default: false,
       },
     },

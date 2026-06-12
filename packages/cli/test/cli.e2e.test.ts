@@ -673,3 +673,67 @@ describe('CLI — html output', () => {
     assert.match(html, /Redoc\.init\(/)
   })
 })
+
+// A spec whose body and path param have only plain `string` types (no example,
+// no format) — the case where the sampler would emit the literal "string".
+const PLAIN_SPEC = JSON.stringify({
+  openapi: '3.0.0',
+  info: { title: 'Plain', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
+  paths: {
+    '/accounts/{accountId}': {
+      get: {
+        operationId: 'getAccount',
+        parameters: [{ name: 'accountId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/accounts': {
+      post: {
+        operationId: 'createAccount',
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object', properties: { email: { type: 'string' } } },
+            },
+          },
+        },
+        responses: { '201': { description: 'Created' } },
+      },
+    },
+  },
+})
+
+describe('CLI — --smart-samples', () => {
+  it('substitutes path params (no %7B...) regardless of the flag', () => {
+    const out = outFile('plain.yaml')
+    const r = cli([specFile('plain.json', PLAIN_SPEC), '-o', out, '-t', 'shell_curl'])
+    assert.equal(r.status, 0, r.stderr)
+    const src = readYaml(out).paths['/accounts/{accountId}'].get['x-codeSamples'][0].source
+    assert.doesNotMatch(src, /%7B/, 'path param should be substituted, not left as %7B...')
+  })
+
+  it('leaves un-annotated strings as "string" without the flag', () => {
+    const out = outFile('plain-default.yaml')
+    const r = cli([specFile('plain.json', PLAIN_SPEC), '-o', out, '-t', 'shell_curl'])
+    assert.equal(r.status, 0, r.stderr)
+    const src = readYaml(out).paths['/accounts'].post['x-codeSamples'][0].source
+    assert.match(src, /"email":\s*"string"/)
+  })
+
+  it('infers a realistic email with --smart-samples', () => {
+    const out = outFile('plain-smart.yaml')
+    const r = cli([
+      specFile('plain.json', PLAIN_SPEC),
+      '-o',
+      out,
+      '-t',
+      'shell_curl',
+      '--smart-samples',
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    const src = readYaml(out).paths['/accounts'].post['x-codeSamples'][0].source
+    assert.doesNotMatch(src, /"email":\s*"string"/)
+    assert.match(src, /"email":\s*"[^"]*@[^"]*"/)
+  })
+})
