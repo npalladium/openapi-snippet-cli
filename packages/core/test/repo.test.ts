@@ -98,6 +98,42 @@ describe('dependency hygiene', () => {
     assert.ok(!/from ['"]lodash|require\(['"]lodash/.test(allSrc), 'no lodash imports')
     assert.ok(!/from ['"]@oclif|require\(['"]@oclif/.test(allSrc), 'no oclif imports')
   })
+
+  // Collect bare (package) specifiers from static `from '...'` / `import '...'`
+  // clauses, skipping node: builtins and relative paths, normalized to the
+  // package name (drops subpaths, keeps the @scope/name for scoped packages).
+  const importedPackages = (name: string): Set<string> => {
+    const out = new Set<string>()
+    const re = /\bfrom\s+['"]([^'"]+)['"]|\bimport\s+['"]([^'"]+)['"]/g
+    for (const src of srcFiles(name)) {
+      for (const m of src.matchAll(re)) {
+        const spec = m[1] ?? m[2]
+        if (!spec || spec.startsWith('.') || spec.startsWith('node:')) continue
+        const parts = spec.split('/')
+        out.add(spec.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0])
+      }
+    }
+    return out
+  }
+
+  it('every statically-imported package is a declared dependency', () => {
+    for (const name of ['core', 'cli', 'mcp']) {
+      const pkg = pkgOf(name)
+      const declared = new Set(
+        Object.keys({
+          ...(pkg.dependencies as object),
+          ...(pkg.optionalDependencies as object),
+        }),
+      )
+      for (const dep of importedPackages(name)) {
+        if (dep === pkg.name) continue // a package may reference its own name
+        assert.ok(
+          declared.has(dep),
+          `${name} statically imports "${dep}" but does not declare it as a (optional) dependency`,
+        )
+      }
+    }
+  })
 })
 
 describe('LICENSE', () => {
