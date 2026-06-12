@@ -5,10 +5,10 @@ Adds openapi snippets using `openapi-snippet` module in redoc style (x-codeSampl
 
 > **Note:** This is a maintained fork of [richardkabiling/openapi-snippet-cli](https://github.com/richardkabiling/openapi-snippet-cli), which is itself a CLI wrapper on [ErikWittern/openapi-snippet](https://github.com/ErikWittern/openapi-snippet). This fork rewrites the project in TypeScript ESM, fixes bugs, and keeps dependencies up to date. Please file issues at [npalladium/openapi-snippet-cli](https://github.com/npalladium/openapi-snippet-cli/issues), not on the original repositories.
 
-[![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
+[![stricli](https://img.shields.io/badge/cli-stricli-brightgreen.svg)](https://bloomberg.github.io/stricli/)
 [![Version](https://img.shields.io/npm/v/openapi-snippet-cli.svg)](https://npmjs.org/package/openapi-snippet-cli)
 [![Downloads/week](https://img.shields.io/npm/dw/openapi-snippet-cli.svg)](https://npmjs.org/package/openapi-snippet-cli)
-[![License](https://img.shields.io/npm/l/openapi-snippet-cli.svg)](https://github.com/richardkabiling/openapi-snippet-cli/blob/master/package.json)
+[![License](https://img.shields.io/npm/l/openapi-snippet-cli.svg)](https://github.com/npalladium/openapi-snippet-cli/blob/main/LICENSE)
 
 * [Getting Started](#getting-started)
 * [Usage](#usage)
@@ -117,8 +117,8 @@ $ cat schema.yaml | openapi-snippet -o dist/schema.yaml
 $ curl https://example.com/openapi.json | openapi-snippet --stdin -e json -o dist/schema.json
 ```
 
-oclif auto-fills the FILE argument from stdin when stdin is piped, so
-`--stdin` is optional. The flag is a no-op signal of intent.
+When no FILE is given and stdin is piped, the spec is read from stdin
+automatically, so `--stdin` is optional — it's just an explicit signal of intent.
 
 ## Dry-run
 
