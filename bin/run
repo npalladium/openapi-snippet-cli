@@ -6,5 +6,5 @@
 
 process.env.NODE_ENV ??= 'production'
 
-const { run, handle } = await import('@oclif/core')
-await run(process.argv.slice(2), import.meta.url).catch(handle)
+const { runMain } = await import(new URL('../dist/cli/index.js', import.meta.url))
+await runMain()

@@ -1,8 +1,14 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { debuglog } from 'node:util'
-import { Args, Command, Flags } from '@oclif/core'
 import { parse as parseOpenAPI } from '@readme/openapi-parser'
+import {
+  buildApplication,
+  buildCommand,
+  type CommandContext,
+  numberParser,
+  run,
+} from '@stricli/core'
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
 import { injectSnippets, serializeChunked } from '../pipeline.ts'
@@ -51,7 +57,8 @@ export const ExitCode = {
 
 const debug = debuglog('openapi-snippet')
 
-class CliError extends Error {
+/** Error carrying the exit code the CLI should terminate with. */
+export class CliError extends Error {
   readonly exitCode: number
   constructor(message: string, exitCode: number) {
     super(message)
@@ -60,249 +67,264 @@ class CliError extends Error {
   }
 }
 
-class OpenapiSnippetCli extends Command {
-  static description =
-    'Adds code snippets in specified languages and frameworks using openapi-snippet in redoc style'
+/** Context handed to the command — carries the host process for I/O. */
+interface LocalContext extends CommandContext {
+  readonly process: NodeJS.Process
+}
 
-  static flags = {
-    version: Flags.version({ char: 'v' }),
-    targets: Flags.string({
-      description:
-        'target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. Supports languages supported in https://github.com/ErikWittern/openapi-snippet. Defaults to adding snippets for ALL supported languages.',
-      char: 't',
-      multiple: true,
-    }),
-    ext: Flags.string({
-      description: 'output format',
-      char: 'e',
-      options: ['yaml', 'json'],
-      default: 'yaml',
-    }),
-    output: Flags.string({
-      description: 'output file name. Ignored when --dry-run or --stdout is set.',
-      char: 'o',
-      default: 'output.yaml',
-    }),
-    'list-targets': Flags.boolean({
-      description: 'print the list of valid --targets values and exit',
-      default: false,
-    }),
-    stdin: Flags.boolean({
-      description: 'read the spec from stdin instead of a file path or URL',
-      default: false,
-    }),
-    'dry-run': Flags.boolean({
-      description: 'print the resolved spec to stdout instead of writing it to --output',
-      default: false,
-    }),
-    verbose: Flags.boolean({
-      description: 'enable trace-level logging (also: NODE_DEBUG=openapi-snippet)',
-      default: false,
-    }),
-    'chunk-size': Flags.integer({
-      description:
-        'process N paths per chunk when serializing. Lower values use less memory and finish faster on large specs. 0 = process all at once (legacy behavior).',
-      default: 0,
-    }),
+interface CliFlags {
+  readonly targets?: readonly string[]
+  readonly ext: string
+  readonly output: string
+  readonly listTargets: boolean
+  readonly stdin: boolean
+  readonly dryRun: boolean
+  readonly verbose: boolean
+  readonly chunkSize: number
+}
+
+const pkgVersion = (() => {
+  try {
+    const raw = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+    return (JSON.parse(raw) as { version?: string }).version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
+
+async function runSnippets(
+  this: LocalContext,
+  flags: CliFlags,
+  file?: string,
+): Promise<Error | undefined> {
+  // Returning (rather than throwing) the error lets Stricli print a clean
+  // message via `commandErrorResult` instead of a stack trace, while
+  // `determineExitCode` still maps CliError.exitCode to the process code.
+  try {
+    await execute(this.process, flags, file)
+    return undefined
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err))
+  }
+}
+
+async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Promise<void> {
+  if (flags.listTargets) {
+    for (const t of allTargets) proc.stdout.write(`${t}\n`)
+    return
   }
 
-  static args = {
-    file: Args.string({
-      description:
-        'input openapi document — local file path or http/https URL. Required unless --stdin is set.',
-      required: false,
-    }),
+  const input = resolveInput(proc, file, flags.stdin)
+  debug('input source: %s', input.source)
+  const api = await loadSpec(input)
+  const pathCount = Object.keys(api.paths ?? {}).length
+  debug('spec loaded: %d paths', pathCount)
+
+  // Warn when the no-chunk path would be slow on a large spec.
+  // Threshold matches the empirical 5s cliff at ~5000 paths.
+  if (flags.chunkSize === 0 && pathCount >= LARGE_SPEC_PATH_THRESHOLD) {
+    proc.stderr.write(
+      `Tip: this spec has ${pathCount} paths. Pass --chunk-size 100 for ~6x faster serialization.\n`,
+    )
   }
 
-  async run() {
-    const { args, flags } = await this.parse(OpenapiSnippetCli)
+  if (flags.chunkSize < 0) {
+    throw new CliError(`--chunk-size must be >= 0 (got ${flags.chunkSize})`, ExitCode.USER_ERROR)
+  }
+  if (flags.ext !== 'yaml' && flags.ext !== 'json') {
+    throw new CliError(`Unknown --ext value: ${flags.ext}`, ExitCode.USER_ERROR)
+  }
+  const ext = flags.ext
 
-    try {
-      if (flags['list-targets']) {
-        this.printTargets()
-        return
-      }
+  const targets = resolveTargets(flags.targets)
+  debug('targets: %o', targets)
 
-      const input = this.resolveInput(args.file, flags.stdin)
-      debug('input source: %s', input.source)
-      const api = await this.loadSpec(input)
-      const pathCount = Object.keys(api.paths ?? {}).length
-      debug('spec loaded: %d paths', pathCount)
+  const apiWithSnippets = injectSnippets(api, targets)
 
-      // Warn when the no-chunk path would be slow on a large spec.
-      // Threshold matches the empirical 5s cliff at ~5000 paths.
-      if (flags['chunk-size'] === 0 && pathCount >= LARGE_SPEC_PATH_THRESHOLD) {
-        process.stderr.write(
-          `Tip: this spec has ${pathCount} paths. Pass --chunk-size 100 for ~6x faster serialization.\n`,
-        )
-      }
-
-      if (flags['chunk-size'] < 0) {
-        throw new CliError(
-          `--chunk-size must be >= 0 (got ${flags['chunk-size']})`,
-          ExitCode.USER_ERROR,
-        )
-      }
-      const targets = this.resolveTargets(flags.targets)
-      debug('targets: %o', targets)
-
-      const apiWithSnippets = this.withSnippets(api, targets)
-
-      if (flags['dry-run']) {
-        if (flags['chunk-size'] > 0 && flags.ext === 'yaml') {
-          this.serializeChunkedToStream(api, targets, 'yaml', flags['chunk-size'], process.stdout)
-        } else {
-          const output = this.serialize(apiWithSnippets, flags.ext)
-          process.stdout.write(output)
-          debug('dry-run: wrote %d bytes to stdout', output.length)
-        }
-        return
-      }
-
-      const absoluteFileName = path.resolve(flags.output)
-      const dir = path.dirname(absoluteFileName)
-      fs.mkdirSync(dir, { recursive: true })
-
-      if (flags['chunk-size'] > 0 && flags.ext === 'yaml') {
-        const stream = fs.createWriteStream(absoluteFileName)
-        this.serializeChunkedToStream(api, targets, 'yaml', flags['chunk-size'], stream)
-        stream.end()
-        debug('wrote chunked output to %s', absoluteFileName)
-      } else {
-        const output = this.serialize(apiWithSnippets, flags.ext)
-        fs.writeFileSync(absoluteFileName, output)
-        debug('wrote %d bytes to %s', output.length, absoluteFileName)
-      }
-    } catch (err) {
-      const code = err instanceof CliError ? err.exitCode : ExitCode.INTERNAL_ERROR
-      this.error(err instanceof Error ? err.message : String(err), { exit: code })
+  if (flags.dryRun) {
+    if (flags.chunkSize > 0 && ext === 'yaml') {
+      serializeChunked(api, targets, 'yaml', flags.chunkSize, proc.stdout as never)
+    } else {
+      const output = serialize(apiWithSnippets, ext)
+      proc.stdout.write(output)
+      debug('dry-run: wrote %d bytes to stdout', output.length)
     }
+    return
   }
 
-  private resolveInput(
-    file: string | undefined,
-    stdin: boolean,
-  ): { source: string; stdin: boolean } {
-    // oclif v4 auto-fills missing positionals from stdin when stdin is piped.
-    // If `file` is set, prefer the explicit value; treat any value that
-    // does not reference an existing local file as raw spec content.
-    if (file) return { source: file, stdin: false }
-    // No positional value: must be stdin-piped and an error otherwise.
-    if (!stdin) {
-      throw new CliError(
-        'No input provided. Pass a file path/URL or pipe a spec on stdin.',
-        ExitCode.USER_ERROR,
-      )
-    }
-    return { source: '', stdin: true }
-  }
+  const absoluteFileName = path.resolve(flags.output)
+  fs.mkdirSync(path.dirname(absoluteFileName), { recursive: true })
 
-  private printTargets(): void {
-    for (const t of allTargets) {
-      process.stdout.write(`${t}\n`)
-    }
+  if (flags.chunkSize > 0 && ext === 'yaml') {
+    const stream = fs.createWriteStream(absoluteFileName)
+    serializeChunked(api, targets, 'yaml', flags.chunkSize, stream as never)
+    stream.end()
+    debug('wrote chunked output to %s', absoluteFileName)
+  } else {
+    const output = serialize(apiWithSnippets, ext)
+    fs.writeFileSync(absoluteFileName, output)
+    debug('wrote %d bytes to %s', output.length, absoluteFileName)
   }
+}
 
-  async loadSpec(input: { source: string; stdin: boolean }): Promise<OpenAPI.Document> {
-    if (input.source.startsWith('http://') || input.source.startsWith('https://')) {
-      return this.loadFromUrl(input.source)
-    }
-    if (input.source === '' && !input.stdin) {
-      throw new CliError('No input provided.', ExitCode.USER_ERROR)
-    }
-    // oclif v4 auto-fills missing positionals from stdin when stdin is piped,
-    // so `input.source` is the raw spec text in that case. Treat any value
-    // that doesn't reference an existing local file as raw content.
-    if (input.source !== '' && !fs.existsSync(input.source)) {
-      return this.loadFromContent(input.source)
-    }
-    if (input.source === '' && input.stdin) {
-      return this.loadFromStdin()
-    }
-    return parseOpenAPI(input.source) as unknown as OpenAPI.Document
-  }
+const command = buildCommand<CliFlags, [file?: string], LocalContext>({
+  docs: {
+    brief: 'Add code snippets to an OpenAPI spec in redoc style (x-codeSamples)',
+    fullDescription:
+      'Adds code snippets in the specified languages and frameworks to every ' +
+      'operation of an OpenAPI document using openapi-snippet, in redoc style ' +
+      '(x-codeSamples).',
+  },
+  parameters: {
+    positional: {
+      kind: 'tuple',
+      parameters: [
+        {
+          brief:
+            'input openapi document — local file path or http/https URL. ' +
+            'Reads the spec from stdin when omitted and stdin is piped.',
+          parse: String,
+          placeholder: 'file',
+          optional: true,
+        },
+      ],
+    },
+    flags: {
+      targets: {
+        kind: 'parsed',
+        parse: String,
+        variadic: true,
+        optional: true,
+        brief:
+          'target snippet languages + frameworks. Repeatable, and comma-separated ' +
+          'values are accepted. A language-only value resolves to its default ' +
+          'framework. Defaults to ALL supported targets.',
+      },
+      ext: {
+        kind: 'parsed',
+        parse: String,
+        default: 'yaml',
+        brief: 'output format: yaml or json',
+      },
+      output: {
+        kind: 'parsed',
+        parse: String,
+        default: 'output.yaml',
+        brief: 'output file name. Ignored when --dry-run is set.',
+      },
+      listTargets: {
+        kind: 'boolean',
+        brief: 'print the list of valid --targets values and exit',
+        default: false,
+      },
+      stdin: {
+        kind: 'boolean',
+        brief: 'read the spec from stdin (auto-detected when no file is given and stdin is piped)',
+        default: false,
+      },
+      dryRun: {
+        kind: 'boolean',
+        brief: 'print the resolved spec to stdout instead of writing it to --output',
+        default: false,
+      },
+      verbose: {
+        kind: 'boolean',
+        brief: 'enable trace-level logging (also: NODE_DEBUG=openapi-snippet)',
+        default: false,
+      },
+      chunkSize: {
+        kind: 'parsed',
+        parse: numberParser,
+        default: '0',
+        brief:
+          'process N paths per chunk when serializing. Lower values use less memory ' +
+          'and finish faster on large specs. 0 = process all at once (legacy behavior).',
+      },
+    },
+    aliases: {
+      t: 'targets',
+      e: 'ext',
+      o: 'output',
+    },
+  },
+  func: runSnippets,
+})
 
-  private loadFromContent(text: string): OpenAPI.Document {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(text)
-    } catch {
-      parsed = yaml.load(text)
-    }
-    // biome-ignore lint/suspicious/noExplicitAny: parser expects APIDocument which we can't statically know after JSON.parse / yaml.load
-    return parseOpenAPI(parsed as any) as unknown as OpenAPI.Document
-  }
+function resolveInput(
+  proc: NodeJS.Process,
+  file: string | undefined,
+  stdin: boolean,
+): { source: string; stdin: boolean } {
+  if (file) return { source: file, stdin: false }
+  // No positional value. Read from stdin when piped (the --stdin flag is an
+  // explicit signal of the same intent). A TTY with no input is an error.
+  if (stdin || !proc.stdin.isTTY) return { source: '', stdin: true }
+  throw new CliError(
+    'No input provided. Pass a file path/URL or pipe a spec on stdin.',
+    ExitCode.USER_ERROR,
+  )
+}
 
-  private async loadFromStdin(): Promise<OpenAPI.Document> {
-    const text = await readStdin()
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(text)
-    } catch {
-      parsed = yaml.load(text)
-    }
-    // biome-ignore lint/suspicious/noExplicitAny: parser expects APIDocument which we can't statically know after JSON.parse / yaml.load
-    return parseOpenAPI(parsed as any) as unknown as OpenAPI.Document
+async function loadSpec(input: { source: string; stdin: boolean }): Promise<OpenAPI.Document> {
+  if (input.source.startsWith('http://') || input.source.startsWith('https://')) {
+    return loadFromUrl(input.source)
   }
+  if (input.stdin) {
+    return parseContent(await readStdin())
+  }
+  // A value that doesn't reference an existing local file is treated as raw
+  // spec content; otherwise let the parser resolve the file and its $refs.
+  if (input.source !== '' && !fs.existsSync(input.source)) {
+    return parseContent(input.source)
+  }
+  return parseOpenAPI(input.source) as unknown as OpenAPI.Document
+}
 
-  private async loadFromUrl(url: string): Promise<OpenAPI.Document> {
-    let res: Response
-    try {
-      res = await fetch(url)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      throw new CliError(`Network error fetching ${url}: ${msg}`, ExitCode.NETWORK_ERROR)
-    }
-    if (!res.ok) {
-      throw new CliError(
-        `Failed to fetch spec: HTTP ${res.status} ${res.statusText} — ${url}`,
-        ExitCode.NETWORK_ERROR,
-      )
-    }
-    const text = await res.text()
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(text)
-    } catch {
-      parsed = yaml.load(text)
-    }
-    // biome-ignore lint/suspicious/noExplicitAny: parser expects APIDocument which we can't statically know after JSON.parse / yaml.load
-    return parseOpenAPI(parsed as any) as unknown as OpenAPI.Document
+function parseContent(text: string): OpenAPI.Document {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    parsed = yaml.load(text)
   }
+  // biome-ignore lint/suspicious/noExplicitAny: parser expects APIDocument which we can't statically know after JSON.parse / yaml.load
+  return parseOpenAPI(parsed as any) as unknown as OpenAPI.Document
+}
 
-  private resolveTargets(input: string[] | undefined): string[] {
-    const inputTargets = input?.flatMap((t) => t.split(',')) ?? []
-    const resolved = (inputTargets.length ? inputTargets : allTargets)
-      .map((arg) => allTargets.find((target) => target.startsWith(arg)))
-      .filter((t): t is string => t !== undefined)
-    if (inputTargets.length && resolved.length === 0) {
-      throw new CliError(
-        `No valid --targets matched: ${inputTargets.join(', ')}. Run with --list-targets to see valid values.`,
-        ExitCode.USER_ERROR,
-      )
-    }
-    return resolved
+async function loadFromUrl(url: string): Promise<OpenAPI.Document> {
+  let res: Response
+  try {
+    res = await fetch(url)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new CliError(`Network error fetching ${url}: ${msg}`, ExitCode.NETWORK_ERROR)
   }
+  if (!res.ok) {
+    throw new CliError(
+      `Failed to fetch spec: HTTP ${res.status} ${res.statusText} — ${url}`,
+      ExitCode.NETWORK_ERROR,
+    )
+  }
+  return parseContent(await res.text())
+}
 
-  private serialize(api: OpenAPI.Document, ext: string): string {
-    if (ext === 'yaml') return yaml.dump(api)
-    if (ext === 'json') return JSON.stringify(api, null, 2)
-    throw new CliError(`Unknown --ext value: ${ext}`, ExitCode.USER_ERROR)
+function resolveTargets(input: readonly string[] | undefined): string[] {
+  const inputTargets = input?.flatMap((t) => t.split(',')) ?? []
+  const resolved = (inputTargets.length ? inputTargets : allTargets)
+    .map((arg) => allTargets.find((target) => target.startsWith(arg)))
+    .filter((t): t is string => t !== undefined)
+  if (inputTargets.length && resolved.length === 0) {
+    throw new CliError(
+      `No valid --targets matched: ${inputTargets.join(', ')}. Run with --list-targets to see valid values.`,
+      ExitCode.USER_ERROR,
+    )
   }
+  return resolved
+}
 
-  withSnippets(api: OpenAPI.Document, targets: readonly string[]): OpenAPI.Document {
-    return injectSnippets(api, targets)
-  }
-
-  serializeChunkedToStream(
-    api: OpenAPI.Document,
-    targets: readonly string[],
-    format: 'yaml' | 'json',
-    chunkSize: number,
-    stream: NodeJS.WritableStream,
-  ): void {
-    serializeChunked(api, targets, format, chunkSize, stream as never)
-  }
+function serialize(api: OpenAPI.Document, ext: 'yaml' | 'json'): string {
+  if (ext === 'yaml') return yaml.dump(api)
+  return JSON.stringify(api, null, 2)
 }
 
 async function readStdin(): Promise<string> {
@@ -319,4 +341,15 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-export { OpenapiSnippetCli as default }
+/** The Stricli application — exported for the launcher and for tests. */
+export const app = buildApplication<LocalContext>(command, {
+  name: 'openapi-snippet',
+  versionInfo: { currentVersion: pkgVersion },
+  scanner: { caseStyle: 'allow-kebab-for-camel' },
+  determineExitCode: (exc) => (exc instanceof CliError ? exc.exitCode : ExitCode.INTERNAL_ERROR),
+})
+
+/** Run the CLI against the given argv (defaults to process argv). */
+export async function runMain(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
+  await run(app, argv, { process })
+}

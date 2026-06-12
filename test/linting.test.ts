@@ -264,8 +264,12 @@ describe('bin/run', () => {
     )
   })
 
-  it('invokes the compiled CLI from dist/', () => {
-    assert.ok(body.includes('@oclif/core'), 'expected bin/run to delegate to @oclif/core')
+  it('invokes the compiled CLI from dist/ via stricli', () => {
+    assert.ok(
+      body.includes('dist/cli/index.js'),
+      'expected bin/run to import the compiled CLI from dist/',
+    )
+    assert.ok(!body.includes('@oclif'), 'bin/run should no longer reference oclif')
   })
 })
 
@@ -310,6 +314,23 @@ describe('dependency hygiene', () => {
       !/from ['"]lodash|require\(['"]lodash/.test(allSrc),
       'no src file should import lodash',
     )
+  })
+
+  it('uses @stricli/core, not oclif, for the CLI', () => {
+    assert.ok(deps['@stricli/core'], '@stricli/core must be a runtime dependency')
+    assert.ok(!deps['@oclif/core'], '@oclif/core should be removed')
+    assert.ok(!deps['@oclif/plugin-help'], '@oclif/plugin-help should be removed')
+  })
+
+  it('does not import oclif anywhere in src/', () => {
+    assert.ok(
+      !/from ['"]@oclif|require\(['"]@oclif/.test(allSrc),
+      'no src file should import oclif',
+    )
+  })
+
+  it('has no leftover oclif config block in package.json', () => {
+    assert.ok(!('oclif' in pkg), 'the oclif config block should be removed from package.json')
   })
 })
 

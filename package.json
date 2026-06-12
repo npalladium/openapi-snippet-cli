@@ -15,8 +15,6 @@
   },
   "bugs": "https://github.com/npalladium/openapi-snippet-cli/issues",
   "dependencies": {
-    "@oclif/core": "^4",
-    "@oclif/plugin-help": "^5",
     "@readme/openapi-parser": "^5.5.0",
     "@stricli/core": "^1.2.7",
     "httpsnippet": "^3.0.9",
@@ -34,7 +32,6 @@
     "c8": "^10",
     "esbuild": "^0.28.0",
     "mocha": "^10",
-    "oclif": "^4.22.81",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3"
   },
@@ -55,26 +52,6 @@
   ],
   "license": "MIT",
   "main": "dist/cli/index.js",
-  "oclif": {
-    "bin": "openapi-snippet",
-    "dirname": "openapi-snippet",
-    "macos": {
-      "identifier": "com.openapi-snippet-cli"
-    },
-    "commands": {
-      "strategy": "single",
-      "target": "./dist/cli/index.js"
-    },
-    "plugins": [
-      "@oclif/plugin-help"
-    ],
-    "additionalHelpFlags": [
-      "-h"
-    ],
-    "additionalVersionFlags": [
-      "-v"
-    ]
-  },
   "types": "dist/cli/index.d.ts",
   "repository": "npalladium/openapi-snippet-cli",
   "scripts": {
