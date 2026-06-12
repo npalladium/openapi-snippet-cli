@@ -167,7 +167,7 @@ OPTIONS
   -o, --output=output         [default: output.yaml] output file name. Ignored when --dry-run.
       --stdin                 read the spec from stdin (also: oclif auto-fills FILE from stdin)
   -t, --targets=targets       target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. Supports languages supported in https://github.com/ErikWittern/openapi-snippet. Defaults to adding snippets for ALL supported languages.
-      --verbose               accepted for compat; set NODE_DEBUG=openapi-snippet for trace logging
+      --verbose               emit trace-level logging to stderr (equivalent to NODE_DEBUG=openapi-snippet)
   -v, --version               show CLI version
 ```
 

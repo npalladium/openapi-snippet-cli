@@ -1,6 +1,6 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { debuglog } from 'node:util'
+import { debuglog, format } from 'node:util'
 import { parse as parseOpenAPI } from '@readme/openapi-parser'
 import {
   buildApplication,
@@ -57,6 +57,22 @@ export const ExitCode = {
 
 const debug = debuglog('openapi-snippet')
 
+/** Set by --verbose; mirrors trace output to stderr without NODE_DEBUG. */
+let verbose = false
+
+/**
+ * Emit a trace line. Honors NODE_DEBUG=openapi-snippet (via debuglog) and,
+ * when --verbose is set, writes the same message to stderr directly. The
+ * two paths are mutually exclusive so a line is never printed twice.
+ */
+function trace(fmt: string, ...args: unknown[]): void {
+  if (debug.enabled) {
+    debug(fmt, ...args)
+  } else if (verbose) {
+    process.stderr.write(`openapi-snippet ${format(fmt, ...args)}\n`)
+  }
+}
+
 /** Error carrying the exit code the CLI should terminate with. */
 export class CliError extends Error {
   readonly exitCode: number
@@ -109,16 +125,18 @@ async function runSnippets(
 }
 
 async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Promise<void> {
+  verbose = flags.verbose
+
   if (flags.listTargets) {
     for (const t of allTargets) proc.stdout.write(`${t}\n`)
     return
   }
 
   const input = resolveInput(proc, file, flags.stdin)
-  debug('input source: %s', input.source)
+  trace('input source: %s', input.source)
   const api = await loadSpec(input)
   const pathCount = Object.keys(api.paths ?? {}).length
-  debug('spec loaded: %d paths', pathCount)
+  trace('spec loaded: %d paths', pathCount)
 
   // Warn when the no-chunk path would be slow on a large spec.
   // Threshold matches the empirical 5s cliff at ~5000 paths.
@@ -137,7 +155,7 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   const ext = flags.ext
 
   const targets = resolveTargets(flags.targets)
-  debug('targets: %o', targets)
+  trace('targets: %o', targets)
 
   const apiWithSnippets = injectSnippets(api, targets)
 
@@ -147,7 +165,7 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
     } else {
       const output = serialize(apiWithSnippets, ext)
       proc.stdout.write(output)
-      debug('dry-run: wrote %d bytes to stdout', output.length)
+      trace('dry-run: wrote %d bytes to stdout', output.length)
     }
     return
   }
@@ -159,11 +177,11 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
     const stream = fs.createWriteStream(absoluteFileName)
     serializeChunked(api, targets, 'yaml', flags.chunkSize, stream as never)
     stream.end()
-    debug('wrote chunked output to %s', absoluteFileName)
+    trace('wrote chunked output to %s', absoluteFileName)
   } else {
     const output = serialize(apiWithSnippets, ext)
     fs.writeFileSync(absoluteFileName, output)
-    debug('wrote %d bytes to %s', output.length, absoluteFileName)
+    trace('wrote %d bytes to %s', output.length, absoluteFileName)
   }
 }
 

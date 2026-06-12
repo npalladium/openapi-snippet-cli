@@ -455,6 +455,25 @@ describe('CLI — --verbose', () => {
     assert.equal(readFileSync(out1, 'utf8'), readFileSync(out2, 'utf8'))
   })
 
+  it('emits trace output on stderr when --verbose is set (no NODE_DEBUG)', () => {
+    const r = cli([
+      specFile(),
+      '-o',
+      outFile('verbose-trace.yaml'),
+      '-t',
+      'shell_curl',
+      '--verbose',
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /spec loaded/i, 'expected trace output on stderr with --verbose')
+  })
+
+  it('stays quiet on stderr without --verbose or NODE_DEBUG', () => {
+    const r = cli([specFile(), '-o', outFile('quiet.yaml'), '-t', 'shell_curl'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.doesNotMatch(r.stderr, /spec loaded/i, 'expected no trace output without --verbose')
+  })
+
   it('emits debug output when NODE_DEBUG=openapi-snippet is set', () => {
     const r = spawnSync(
       'node',
