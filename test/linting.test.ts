@@ -336,3 +336,34 @@ describe('LICENSE', () => {
     assert.match(body, /Erik Wittern/)
   })
 })
+
+describe('package metadata points at this fork', () => {
+  const pkg = loadJson(join(REPO_ROOT, 'package.json')) as JsonObject
+  const FORK = 'npalladium/openapi-snippet-cli'
+
+  const repoUrl = (() => {
+    const r = pkg.repository
+    if (typeof r === 'string') return r
+    return ((r as JsonObject)?.url as string) ?? ''
+  })()
+
+  it('bugs/homepage/repository reference npalladium, not the upstream repo', () => {
+    assert.match(pkg.bugs as string, new RegExp(FORK))
+    assert.match(pkg.homepage as string, new RegExp(FORK))
+    assert.match(repoUrl, new RegExp(FORK))
+  })
+
+  it('does not point metadata at the upstream richardkabiling repo', () => {
+    const blob = JSON.stringify({
+      bugs: pkg.bugs,
+      homepage: pkg.homepage,
+      repository: pkg.repository,
+    })
+    assert.ok(!/richardkabiling/.test(blob), `stale upstream URL in metadata: ${blob}`)
+  })
+
+  it('credits the fork maintainer as author', () => {
+    const author = typeof pkg.author === 'string' ? pkg.author : (pkg.author as JsonObject)?.name
+    assert.match(author as string, /Nikhil Pallamreddy/)
+  })
+})

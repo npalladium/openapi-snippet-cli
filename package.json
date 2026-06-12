@@ -2,7 +2,7 @@
   "name": "openapi-snippet-cli",
   "description": "Adds openapi snippets using openapi-snippet module in redoc style",
   "version": "0.2.1",
-  "author": "Richard Kabiling",
+  "author": "Nikhil Pallamreddy",
   "type": "module",
   "bin": {
     "openapi-snippet": "./bin/run"
@@ -13,7 +13,7 @@
       "import": "./dist/cli/index.js"
     }
   },
-  "bugs": "https://github.com/richardkabiling/openapi-snippet-cli/issues",
+  "bugs": "https://github.com/npalladium/openapi-snippet-cli/issues",
   "dependencies": {
     "@oclif/core": "^4",
     "@oclif/plugin-help": "^5",
@@ -45,7 +45,7 @@
     "/bin",
     "/dist"
   ],
-  "homepage": "https://github.com/richardkabiling/openapi-snippet-cli",
+  "homepage": "https://github.com/npalladium/openapi-snippet-cli",
   "keywords": [
     "openapi",
     "swagger",
@@ -76,7 +76,7 @@
     ]
   },
   "types": "dist/cli/index.d.ts",
-  "repository": "richardkabiling/openapi-snippet-cli",
+  "repository": "npalladium/openapi-snippet-cli",
   "scripts": {
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
