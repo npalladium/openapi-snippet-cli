@@ -641,3 +641,24 @@ describe('CLI — --skip-errors', () => {
     assert.ok(!d.paths['/bad'].get['x-codeSamples'], '/bad should be left without snippets')
   })
 })
+
+// ─── HTML output ─────────────────────────────────────────────────────────────
+
+describe('CLI — html output', () => {
+  it('writes a Redoc HTML page with -e html, embedding the enriched spec', () => {
+    const out = outFile('docs.html')
+    const r = cli([specFile(), '-o', out, '-e', 'html', '-t', 'shell_curl'])
+    assert.equal(r.status, 0, r.stderr)
+    const html = readFileSync(out, 'utf8')
+    assert.ok(html.startsWith('<!DOCTYPE html>'), 'expected an HTML document')
+    assert.match(html, /redoc\.standalone\.js/, 'expected the Redoc bundle')
+    assert.match(html, /x-codeSamples/, 'expected the injected snippets to be embedded')
+  })
+
+  it('warns that --chunk-size does not apply to -e html', () => {
+    const out = outFile('docs-chunk.html')
+    const r = cli([specFile(), '-o', out, '-e', 'html', '-t', 'shell_curl', '--chunk-size', '10'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /--chunk-size only speeds up YAML/i)
+  })
+})

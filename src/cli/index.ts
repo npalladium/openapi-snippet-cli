@@ -11,7 +11,7 @@ import {
 } from '@stricli/core'
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
-import { type InjectOptions, injectSnippets, serializeChunked } from '../pipeline.ts'
+import { type InjectOptions, injectSnippets, renderHtml, serializeChunked } from '../pipeline.ts'
 
 /**
  * Warn when the no-chunk path would dominate runtime on a large spec.
@@ -150,16 +150,16 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   if (flags.chunkSize < 0) {
     throw new CliError(`--chunk-size must be >= 0 (got ${flags.chunkSize})`, ExitCode.USER_ERROR)
   }
-  if (flags.ext !== 'yaml' && flags.ext !== 'json') {
+  if (flags.ext !== 'yaml' && flags.ext !== 'json' && flags.ext !== 'html') {
     throw new CliError(`Unknown --ext value: ${flags.ext}`, ExitCode.USER_ERROR)
   }
   const ext = flags.ext
 
-  // Chunked streaming only applies to YAML; JSON is serialized all at once
-  // because splitting a JSON document across chunks produces invalid JSON.
-  if (flags.chunkSize > 0 && ext === 'json') {
+  // Chunked streaming only applies to YAML. JSON/HTML are serialized all at
+  // once (splitting either across chunks would produce an invalid document).
+  if (flags.chunkSize > 0 && ext !== 'yaml') {
     proc.stderr.write(
-      '--chunk-size only speeds up YAML output; -e json is serialized all at once.\n',
+      `--chunk-size only speeds up YAML output; -e ${ext} is serialized all at once.\n`,
     )
   }
 
@@ -240,7 +240,7 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
         kind: 'parsed',
         parse: String,
         default: 'yaml',
-        brief: 'output format: yaml or json',
+        brief: 'output format: yaml, json, or html (a standalone Redoc page)',
       },
       output: {
         kind: 'parsed',
@@ -364,8 +364,9 @@ function resolveTargets(input: readonly string[] | undefined): string[] {
   return resolved
 }
 
-function serialize(api: OpenAPI.Document, ext: 'yaml' | 'json'): string {
+function serialize(api: OpenAPI.Document, ext: 'yaml' | 'json' | 'html'): string {
   if (ext === 'yaml') return yaml.dump(api)
+  if (ext === 'html') return renderHtml(api)
   return JSON.stringify(api, null, 2)
 }
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import type { OpenAPI } from 'openapi-types'
 import { getEndpointSnippets, getSnippets } from '../src/openapi-snippet/index.ts'
-import { injectSnippets } from '../src/pipeline.ts'
+import { injectSnippets, renderHtml } from '../src/pipeline.ts'
 
 const minimalSpec: OpenAPI.Document = {
   openapi: '3.0.0',
@@ -169,5 +169,42 @@ describe('injectSnippets — skipErrors', () => {
     assert.ok(paths['/ok'].get['x-codeSamples'], '/ok should be annotated')
     assert.ok(!paths['/bad'].get['x-codeSamples'], '/bad should be left untouched')
     assert.deepEqual(skipped, [{ path: '/bad', method: 'get' }])
+  })
+})
+
+describe('renderHtml', () => {
+  const api = {
+    openapi: '3.0.0',
+    info: { title: 'My API', version: '1.0.0' },
+    paths: {},
+  } as unknown as OpenAPI.Document
+
+  it('produces a standalone Redoc HTML page embedding the spec', () => {
+    const html = renderHtml(api)
+    assert.ok(html.startsWith('<!DOCTYPE html>'), 'should be an HTML document')
+    assert.match(html, /redoc\.standalone\.js/, 'should load the Redoc bundle')
+    assert.match(html, /Redoc\.init\(/, 'should initialize Redoc with the spec')
+    assert.match(html, /<title>My API<\/title>/, 'should use the spec title')
+    assert.match(html, /"openapi":\s*"3\.0\.0"/, 'should inline the spec JSON')
+  })
+
+  it('escapes < so an embedded </script> cannot break out of the script tag', () => {
+    const hostile = {
+      openapi: '3.0.0',
+      info: { title: 'pwn', version: '1' },
+      paths: { '/x': { get: { description: '</script><script>alert(1)</script>' } } },
+    } as unknown as OpenAPI.Document
+    const html = renderHtml(hostile)
+    assert.ok(
+      !html.includes('</script><script>alert(1)'),
+      'a raw script-breakout sequence must not survive into the output',
+    )
+    assert.match(html, /\\u003c/, 'angle brackets in the spec should be unicode-escaped')
+  })
+
+  it('HTML-escapes the title', () => {
+    const t = { openapi: '3.0.0', info: { title: 'a<b>&"c', version: '1' }, paths: {} }
+    const html = renderHtml(t as unknown as OpenAPI.Document)
+    assert.match(html, /<title>a&lt;b&gt;&amp;&quot;c<\/title>/)
   })
 })

@@ -86,6 +86,21 @@ The example above should add snippets to `schema.yaml` and output the modified s
 $ openapi-snippet schema.yaml -e json -o dist/schema.json
 ```
 
+## Outputting HTML docs (Redoc)
+
+`-e html` renders a standalone [Redoc](https://github.com/Redocly/redoc) page
+from the enriched spec. Redoc displays the injected `x-codeSamples` natively,
+so the page shows the request/response docs alongside the code snippets:
+
+```sh-session
+$ openapi-snippet https://api.example.com/openapi.json -e html -o dist/docs.html
+$ open dist/docs.html
+```
+
+The spec is inlined into the page, so it's self-contained except for the Redoc
+bundle, which is loaded from a CDN at view time (the page needs network access
+the first time it renders).
+
 ## Choosing Targets
 ```sh-session
 $ openapi-snippet schema.yaml -t java -t c -o dist/schema.json
@@ -180,7 +195,7 @@ ARGUMENTS
 ```
 OPTIONS
       --chunk-size=<value>   process N paths per chunk when serializing. 0 = process all at once (legacy behavior). Lower values are faster on large specs.
-  -e, --ext=yaml|json         [default: yaml] output format
+  -e, --ext=yaml|json|html    [default: yaml] output format (html = a standalone Redoc page)
       --dry-run               print the resolved spec to stdout instead of writing to --output
   -h, --help                  show CLI help
       --list-targets          print the list of valid --targets values and exit

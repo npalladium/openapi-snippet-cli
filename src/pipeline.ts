@@ -212,3 +212,49 @@ function splitHeadTail(spec: OpenAPI.Document): { head: string; tail: string } {
 
   return { head: headYaml === '' ? '' : `${headYaml}paths:\n`, tail: tailYaml }
 }
+
+/** Default CDN bundle used to render the Redoc HTML page. */
+export const REDOC_BUNDLE_URL = 'https://cdn.redocly.com/redoc/latest/bundles/redoc.standalone.js'
+
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c)
+}
+
+/**
+ * Render a standalone Redoc HTML page for the given spec. The spec is inlined
+ * (so the page is self-contained apart from the Redoc bundle, which is loaded
+ * from {@link REDOC_BUNDLE_URL}). Redoc renders `x-codeSamples` natively, so an
+ * enriched spec shows its code snippets.
+ *
+ * `<` characters in the inlined JSON are escaped to `<` so a string such
+ * as `</script>` in the spec cannot break out of the script tag.
+ */
+export function renderHtml(api: OpenAPI.Document): string {
+  const title = (api as { info?: { title?: string } }).info?.title ?? 'API documentation'
+  const specJson = JSON.stringify(api).replace(/</g, '\\u003c')
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>body { margin: 0; padding: 0; }</style>
+  </head>
+  <body>
+    <div id="redoc"></div>
+    <script src="${REDOC_BUNDLE_URL}"></script>
+    <script>
+      Redoc.init(${specJson}, {}, document.getElementById('redoc'))
+    </script>
+  </body>
+</html>
+`
+}
