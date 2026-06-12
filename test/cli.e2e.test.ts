@@ -574,4 +574,21 @@ describe('CLI — --chunk-size', () => {
     const r = cli([specFile(), '-o', outFile('neg.yaml'), '-t', 'shell_curl', '--chunk-size', '-1'])
     assert.notEqual(r.status, 0)
   })
+
+  it('warns (but succeeds) when --chunk-size is combined with -e json', () => {
+    const out = outFile('chunk-json.json')
+    const r = cli([specFile(), '-o', out, '-e', 'json', '-t', 'shell_curl', '--chunk-size', '10'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /--chunk-size only speeds up YAML/i)
+    // Output is still valid JSON with snippets.
+    const d = JSON.parse(readFileSync(out, 'utf8'))
+    assert.ok(d.paths['/ping'].get['x-codeSamples'])
+  })
+
+  it('does not warn when --chunk-size is used with yaml output', () => {
+    const out = outFile('chunk-yaml-nowarn.yaml')
+    const r = cli([specFile(), '-o', out, '-t', 'shell_curl', '--chunk-size', '10'])
+    assert.equal(r.status, 0, r.stderr)
+    assert.doesNotMatch(r.stderr, /--chunk-size only speeds up YAML/i)
+  })
 })

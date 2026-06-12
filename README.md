@@ -137,6 +137,10 @@ $ openapi-snippet big-api.yaml --chunk-size 100 -o dist/big-api.yaml
 Empirically (8MB / 10000 paths / 40000 ops): 11.5s → 1.7s.
 Default is 0 (no chunking; the legacy all-at-once behavior).
 
+`--chunk-size` only speeds up **YAML** output. Splitting a JSON document
+across chunks would produce invalid JSON, so `-e json` is always serialized
+all at once; combining the two prints a warning and ignores the chunk size.
+
 ## Exit codes
 
 | code | meaning                          |

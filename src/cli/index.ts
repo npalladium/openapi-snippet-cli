@@ -154,6 +154,14 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   }
   const ext = flags.ext
 
+  // Chunked streaming only applies to YAML; JSON is serialized all at once
+  // because splitting a JSON document across chunks produces invalid JSON.
+  if (flags.chunkSize > 0 && ext === 'json') {
+    proc.stderr.write(
+      '--chunk-size only speeds up YAML output; -e json is serialized all at once.\n',
+    )
+  }
+
   const targets = resolveTargets(flags.targets)
   trace('targets: %o', targets)
 
