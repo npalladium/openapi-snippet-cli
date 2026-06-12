@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import type { OpenAPI } from 'openapi-types'
 import { getEndpointSnippets, getSnippets } from '../src/openapi-snippet/index.ts'
+import { injectSnippets } from '../src/pipeline.ts'
 
 const minimalSpec: OpenAPI.Document = {
   openapi: '3.0.0',
@@ -134,5 +135,39 @@ describe('getSnippets', () => {
     const results = getSnippets(spec, ['shell_curl'])
     const methods = results.map((r) => r.method)
     assert.deepEqual(methods, ['GET', 'POST', 'DELETE'])
+  })
+})
+
+describe('injectSnippets — skipErrors', () => {
+  // /bad trips the HAR converter (query param missing `name`); /ok is fine.
+  const specWithBadOp: OpenAPI.Document = {
+    openapi: '3.0.0',
+    info: { title: 'Partial', version: '1.0.0' },
+    servers: [{ url: 'https://api.example.com' }],
+    paths: {
+      '/ok': { get: { responses: { '200': { description: 'OK' } } } },
+      '/bad': {
+        get: {
+          parameters: [{ in: 'query', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    },
+  }
+
+  it('throws by default when an operation cannot be processed', () => {
+    assert.throws(() => injectSnippets(specWithBadOp, ['shell_curl']))
+  })
+
+  it('skips the failing operation and reports it via onSkip when skipErrors is set', () => {
+    const skipped: Array<{ path: string; method: string }> = []
+    const result = injectSnippets(specWithBadOp, ['shell_curl'], {
+      skipErrors: true,
+      onSkip: (path, method) => skipped.push({ path, method }),
+    })
+    const paths = result.paths as Record<string, Record<string, { 'x-codeSamples'?: unknown }>>
+    assert.ok(paths['/ok'].get['x-codeSamples'], '/ok should be annotated')
+    assert.ok(!paths['/bad'].get['x-codeSamples'], '/bad should be left untouched')
+    assert.deepEqual(skipped, [{ path: '/bad', method: 'get' }])
   })
 })

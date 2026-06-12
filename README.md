@@ -145,6 +145,18 @@ Default is 0 (no chunking; the legacy all-at-once behavior).
 across chunks would produce invalid JSON, so `-e json` is always serialized
 all at once; combining the two prints a warning and ignores the chunk size.
 
+## Tolerating unprocessable operations (--skip-errors)
+
+By default, a single operation the snippet generator can't handle (e.g. a
+malformed parameter) aborts the whole run. `--skip-errors` leaves such
+operations intact (without `x-codeSamples`), prints a warning to stderr, and
+continues with the rest of the document:
+
+```sh-session
+$ openapi-snippet schema.yaml --skip-errors -o dist/schema.yaml
+Skipped GET /bad: Required parameters missing
+```
+
 ## Exit codes
 
 | code | meaning                          |
@@ -173,7 +185,8 @@ OPTIONS
   -h, --help                  show CLI help
       --list-targets          print the list of valid --targets values and exit
   -o, --output=output         [default: output.yaml] output file name. Ignored when --dry-run.
-      --stdin                 read the spec from stdin (also: oclif auto-fills FILE from stdin)
+      --skip-errors           skip operations whose snippet generation fails (warn on stderr) instead of aborting
+      --stdin                 read the spec from stdin (auto-detected when no FILE is given and stdin is piped)
   -t, --targets=targets       target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. Supports languages supported in https://github.com/ErikWittern/openapi-snippet. Defaults to adding snippets for ALL supported languages.
       --verbose               emit trace-level logging to stderr (equivalent to NODE_DEBUG=openapi-snippet)
   -v, --version               show CLI version

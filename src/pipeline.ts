@@ -21,6 +21,15 @@ export const HTTP_METHODS = [
 
 export type Snippet = { lang: string; source: string }
 
+/** Options controlling how snippet injection handles per-operation failures. */
+export type InjectOptions = {
+  /** When true, an operation whose snippet generation throws is skipped
+   *  instead of aborting the whole document. */
+  skipErrors?: boolean
+  /** Invoked for each skipped operation (only when skipErrors is true). */
+  onSkip?: (path: string, method: string, err: Error) => void
+}
+
 /**
  * Inject code samples into every HTTP operation of the given spec.
  *
@@ -32,42 +41,64 @@ export type Snippet = { lang: string; source: string }
  *
  * This keeps memory roughly O(modified operations) instead of
  * O(full spec) — a big win for large swaggers.
+ *
+ * By default a single operation that the snippet generator cannot handle
+ * aborts the whole run. Pass `{ skipErrors: true }` to skip such operations
+ * (leaving them intact, without `x-codeSamples`) and continue.
  */
 export function injectSnippets(
   api: OpenAPI.Document,
   targets: readonly string[],
+  options?: InjectOptions,
 ): OpenAPI.Document {
   const originalPaths = api.paths ?? {}
   const newPaths: Record<string, unknown> = {}
   for (const path of Object.keys(originalPaths)) {
     const originalPathItem = originalPaths[path] as Record<string, unknown> | undefined
     if (!originalPathItem) continue
+    newPaths[path] = enrichPathItem(api, path, originalPathItem, targets, options)
+  }
+  return { ...api, paths: newPaths } as OpenAPI.Document
+}
 
-    let modified = false
-    const newPathItem: Record<string, unknown> = {}
-    for (const method of Object.keys(originalPathItem)) {
-      if (!(HTTP_METHODS as readonly string[]).includes(method)) {
-        newPathItem[method] = originalPathItem[method]
-        continue
-      }
-      const originalOp = originalPathItem[method] as Record<string, unknown>
+/**
+ * Return a path-item with `x-codeSamples` added to each HTTP operation.
+ * Returns the original object unchanged (shared by reference) when no
+ * operation was annotated, keeping memory bounded to modified operations.
+ */
+function enrichPathItem(
+  api: OpenAPI.Document,
+  path: string,
+  originalPathItem: Record<string, unknown>,
+  targets: readonly string[],
+  options: InjectOptions | undefined,
+): Record<string, unknown> {
+  let modified = false
+  const newPathItem: Record<string, unknown> = {}
+  for (const method of Object.keys(originalPathItem)) {
+    if (!(HTTP_METHODS as readonly string[]).includes(method)) {
+      newPathItem[method] = originalPathItem[method]
+      continue
+    }
+    const originalOp = originalPathItem[method] as Record<string, unknown>
+    try {
       newPathItem[method] = {
         ...originalOp,
         'x-codeSamples': fetchSnippets(api, path, method, targets),
       }
       modified = true
-    }
-    if (modified) {
-      // Copy any other path-level keys (summary, parameters, servers, etc.)
-      for (const k of Object.keys(originalPathItem)) {
-        if (!(k in newPathItem)) newPathItem[k] = originalPathItem[k]
-      }
-      newPaths[path] = newPathItem
-    } else {
-      newPaths[path] = originalPathItem
+    } catch (err) {
+      if (!options?.skipErrors) throw err
+      options.onSkip?.(path, method, err instanceof Error ? err : new Error(String(err)))
+      newPathItem[method] = originalOp
     }
   }
-  return { ...api, paths: newPaths } as OpenAPI.Document
+  if (!modified) return originalPathItem
+  // Copy any other path-level keys (summary, parameters, servers, etc.)
+  for (const k of Object.keys(originalPathItem)) {
+    if (!(k in newPathItem)) newPathItem[k] = originalPathItem[k]
+  }
+  return newPathItem
 }
 
 export function fetchSnippets(
@@ -112,12 +143,13 @@ export function serializeChunked(
   format: SerializeFormat,
   chunkSize: number,
   out: Writable,
+  options?: InjectOptions,
 ): void {
   if (format === 'json') {
     // JSON is dumped once because splitting across chunks produces
     // invalid JSON. The injection is still bounded — `injectSnippets`
     // does not deep-clone.
-    const enriched = injectSnippets(spec, targets)
+    const enriched = injectSnippets(spec, targets, options)
     out.write(JSON.stringify(enriched, null, 2))
     out.write('\n')
     return
@@ -135,7 +167,7 @@ export function serializeChunked(
     const keys = allKeys.slice(i, i + chunkSize)
     const slice: Record<string, unknown> = {}
     for (const k of keys) slice[k] = originalPaths[k]
-    const enriched = injectSnippets({ ...spec, paths: slice } as OpenAPI.Document, targets)
+    const enriched = injectSnippets({ ...spec, paths: slice } as OpenAPI.Document, targets, options)
     // Dump the chunk's paths and strip the leading `paths:\n` line.
     // Keep the trailing newline: it terminates any literal block
     // scalars (`|-`) at the end of the chunk, and the next chunk's

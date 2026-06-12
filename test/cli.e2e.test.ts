@@ -592,3 +592,52 @@ describe('CLI — --chunk-size', () => {
     assert.doesNotMatch(r.stderr, /--chunk-size only speeds up YAML/i)
   })
 })
+
+// ─── --skip-errors ──────────────────────────────────────────────────────────────
+
+// A spec where one operation trips the HAR converter (query param missing `name`)
+// while another operation is fine.
+const SPEC_WITH_BAD_OP = JSON.stringify({
+  openapi: '3.0.0',
+  info: { title: 'Partial', version: '1' },
+  servers: [{ url: 'https://api.example.com' }],
+  paths: {
+    '/ok': { get: { responses: { '200': { description: 'OK' } } } },
+    '/bad': {
+      get: {
+        parameters: [{ in: 'query', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+})
+
+describe('CLI — --skip-errors', () => {
+  it('aborts (non-zero) on an unprocessable operation by default', () => {
+    const r = cli([
+      specFile('bad.json', SPEC_WITH_BAD_OP),
+      '-o',
+      outFile('strict.yaml'),
+      '-t',
+      'shell_curl',
+    ])
+    assert.notEqual(r.status, 0)
+  })
+
+  it('skips the bad operation, warns, and still writes the rest with --skip-errors', () => {
+    const out = outFile('skipped.yaml')
+    const r = cli([
+      specFile('bad.json', SPEC_WITH_BAD_OP),
+      '-o',
+      out,
+      '-t',
+      'shell_curl',
+      '--skip-errors',
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /skip.*\/bad/i, 'expected a stderr warning naming the skipped op')
+    const d = readYaml(out)
+    assert.ok(d.paths['/ok'].get['x-codeSamples'], '/ok should still get snippets')
+    assert.ok(!d.paths['/bad'].get['x-codeSamples'], '/bad should be left without snippets')
+  })
+})

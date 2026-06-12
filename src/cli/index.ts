@@ -11,7 +11,7 @@ import {
 } from '@stricli/core'
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
-import { injectSnippets, serializeChunked } from '../pipeline.ts'
+import { type InjectOptions, injectSnippets, serializeChunked } from '../pipeline.ts'
 
 /**
  * Warn when the no-chunk path would dominate runtime on a large spec.
@@ -97,6 +97,7 @@ interface CliFlags {
   readonly dryRun: boolean
   readonly verbose: boolean
   readonly chunkSize: number
+  readonly skipErrors: boolean
 }
 
 const pkgVersion = (() => {
@@ -165,13 +166,22 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   const targets = resolveTargets(flags.targets)
   trace('targets: %o', targets)
 
-  const apiWithSnippets = injectSnippets(api, targets)
+  const injectOptions: InjectOptions = {
+    skipErrors: flags.skipErrors,
+    onSkip: (p, m, err) => {
+      proc.stderr.write(`Skipped ${m.toUpperCase()} ${p}: ${err.message}\n`)
+    },
+  }
+  // Chunked YAML injects per chunk inside serializeChunked; everything else
+  // injects once here. Computing it lazily avoids a wasted full injection
+  // (and duplicate onSkip warnings) on the chunked path.
+  const useChunked = flags.chunkSize > 0 && ext === 'yaml'
 
   if (flags.dryRun) {
-    if (flags.chunkSize > 0 && ext === 'yaml') {
-      serializeChunked(api, targets, 'yaml', flags.chunkSize, proc.stdout as never)
+    if (useChunked) {
+      serializeChunked(api, targets, 'yaml', flags.chunkSize, proc.stdout as never, injectOptions)
     } else {
-      const output = serialize(apiWithSnippets, ext)
+      const output = serialize(injectSnippets(api, targets, injectOptions), ext)
       proc.stdout.write(output)
       trace('dry-run: wrote %d bytes to stdout', output.length)
     }
@@ -181,13 +191,13 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   const absoluteFileName = path.resolve(flags.output)
   fs.mkdirSync(path.dirname(absoluteFileName), { recursive: true })
 
-  if (flags.chunkSize > 0 && ext === 'yaml') {
+  if (useChunked) {
     const stream = fs.createWriteStream(absoluteFileName)
-    serializeChunked(api, targets, 'yaml', flags.chunkSize, stream as never)
+    serializeChunked(api, targets, 'yaml', flags.chunkSize, stream as never, injectOptions)
     stream.end()
     trace('wrote chunked output to %s', absoluteFileName)
   } else {
-    const output = serialize(apiWithSnippets, ext)
+    const output = serialize(injectSnippets(api, targets, injectOptions), ext)
     fs.writeFileSync(absoluteFileName, output)
     trace('wrote %d bytes to %s', output.length, absoluteFileName)
   }
@@ -265,6 +275,12 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
         brief:
           'process N paths per chunk when serializing. Lower values use less memory ' +
           'and finish faster on large specs. 0 = process all at once (legacy behavior).',
+      },
+      skipErrors: {
+        kind: 'boolean',
+        brief:
+          'skip operations whose snippet generation fails (warn on stderr) instead of aborting',
+        default: false,
       },
     },
     aliases: {
