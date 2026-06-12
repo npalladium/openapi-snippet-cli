@@ -203,6 +203,47 @@ $ openapi-snippet schema.yaml --skip-errors -o dist/schema.yaml
 Skipped GET /bad: Required parameters missing
 ```
 
+## Sample request values
+
+The request bodies and URLs in the generated snippets are sampled from the
+spec. Typed values are honored — numbers, booleans, enums, and `format`-annotated
+strings (uuid, date-time, …) render as real values — and **path parameters are
+substituted into the URL** (`/users/{id}` → `/users/<sample>`), not left as the
+encoded placeholder `%7Bid%7D`. Author-provided `example`/`examples` (on the
+media type, parameter, or schema) are always preferred over a generated sample.
+
+A plain `string` field with no `format`/`enum`/`example` has nothing to sample,
+so it renders as the literal `"string"`. `--smart-samples` fills those with a
+value inferred from the field/parameter name instead:
+
+```sh-session
+$ openapi-snippet schema.yaml --smart-samples -o dist/schema.yaml
+# "email": "user@example.com", "avatar_uri": "https://example.com",
+# "..._id": "3fa85f64-...", "first_name": "John", ...
+```
+
+It only touches fields that would otherwise be `"string"`; everything the spec
+already specifies is left untouched. Off by default.
+
+## Splitting output per tag (--split-by-tag)
+
+For large specs, a single document (especially an HTML page) gets unwieldy.
+`--split-by-tag` treats `--output` as a **directory** and writes one file per
+tag, in whichever format `-e` selects (yaml, json, or html):
+
+```sh-session
+$ openapi-snippet big-api.yaml -e html --split-by-tag -o dist/docs
+$ open dist/docs/index.html
+```
+
+- An operation with several tags appears under **each** of its tags; operations
+  with no tag go into `untagged.<ext>`.
+- Each file's `components` are **pruned to the schemas that tag actually
+  references** (transitively), so per-tag Redoc pages stay small instead of
+  carrying the whole spec's schemas.
+- With `-e html`, an `index.html` linking every per-tag page is also written.
+- It can't be combined with `--dry-run` (it writes a folder, not stdout).
+
 ## MCP server (`openapi-mcp`)
 
 The `openapi-mcp` CLI (the [`openapi-mcp`](packages/mcp) package)
@@ -271,6 +312,8 @@ OPTIONS
       --list-targets          print the list of valid --targets values and exit
   -o, --output=output         [default: output.yaml] output file name. Ignored when --dry-run.
       --skip-errors           skip operations whose snippet generation fails (warn on stderr) instead of aborting
+      --smart-samples         fill un-annotated string fields with realistic values inferred from their names (email->user@example.com, *_id->a uuid, ...) instead of "string"
+      --split-by-tag          write a folder with one file per tag (--output is treated as a directory); components are pruned per tag, and -e html also emits an index.html
       --stdin                 read the spec from stdin (auto-detected when no FILE is given and stdin is piped)
   -t, --targets=targets       target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. Supports languages supported in https://github.com/ErikWittern/openapi-snippet. Defaults to adding snippets for ALL supported languages.
       --verbose               emit trace-level logging to stderr (equivalent to NODE_DEBUG=openapi-snippet)
