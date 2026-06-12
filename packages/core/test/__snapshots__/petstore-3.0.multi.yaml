@@ -30,7 +30,7 @@ paths:
         - lang: Shell + Curl
           source: |-
             curl --request GET \
-              --url 'https://petstore.example.com/v1/pets?limit=SOME_INTEGER_VALUE'
+              --url 'https://petstore.example.com/v1/pets?limit=100'
         - lang: Node + Native
           source: |-
             const http = require('https');
@@ -39,7 +39,7 @@ paths:
               method: 'GET',
               hostname: 'petstore.example.com',
               port: null,
-              path: '/v1/pets?limit=SOME_INTEGER_VALUE',
+              path: '/v1/pets?limit=100',
               headers: {}
             };
 
@@ -63,7 +63,7 @@ paths:
 
             url = "https://petstore.example.com/v1/pets"
 
-            querystring = {"limit":"SOME_INTEGER_VALUE"}
+            querystring = {"limit":"100"}
 
             response = requests.get(url, params=querystring)
 
@@ -163,7 +163,7 @@ paths:
         - lang: Shell + Curl
           source: |-
             curl --request GET \
-              --url https://petstore.example.com/v1/pets/%7BpetId%7D
+              --url https://petstore.example.com/v1/pets/string
         - lang: Node + Native
           source: |-
             const http = require('https');
@@ -172,7 +172,7 @@ paths:
               method: 'GET',
               hostname: 'petstore.example.com',
               port: null,
-              path: '/v1/pets/%7BpetId%7D',
+              path: '/v1/pets/string',
               headers: {}
             };
 
@@ -194,7 +194,7 @@ paths:
           source: |-
             import requests
 
-            url = "https://petstore.example.com/v1/pets/%7BpetId%7D"
+            url = "https://petstore.example.com/v1/pets/string"
 
             response = requests.get(url)
 

@@ -16,8 +16,8 @@ const METHOD_ORDER = ['get', 'post', 'put', 'delete', 'patch']
  * Return snippets for endpoint identified using path and method in the given
  * OpenAPI document.
  */
-const getEndpointSnippets = (openApi, path, method, targets, values = {}) => {
-  const hars = OpenAPIToHar.getEndpoint(openApi, path, method, values)
+const getEndpointSnippets = (openApi, path, method, targets, values = {}, options = {}) => {
+  const hars = OpenAPIToHar.getEndpoint(openApi, path, method, values, options)
 
   const snippets = []
   for (const har of hars) {
@@ -41,8 +41,8 @@ const getEndpointSnippets = (openApi, path, method, targets, values = {}) => {
 /**
  * Return snippets for all endpoints in the given OpenAPI document.
  */
-const getSnippets = (openApi, targets) => {
-  const endpointHarInfoList = OpenAPIToHar.getAll(openApi)
+const getSnippets = (openApi, targets, options = {}) => {
+  const endpointHarInfoList = OpenAPIToHar.getAll(openApi, options)
 
   const results = []
   for (const harInfo of endpointHarInfoList) {

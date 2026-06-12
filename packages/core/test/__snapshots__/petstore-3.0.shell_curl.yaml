@@ -30,7 +30,7 @@ paths:
         - lang: Shell + Curl
           source: |-
             curl --request GET \
-              --url 'https://petstore.example.com/v1/pets?limit=SOME_INTEGER_VALUE'
+              --url 'https://petstore.example.com/v1/pets?limit=100'
     post:
       operationId: createPet
       summary: Create a pet
@@ -81,7 +81,7 @@ paths:
         - lang: Shell + Curl
           source: |-
             curl --request GET \
-              --url https://petstore.example.com/v1/pets/%7BpetId%7D
+              --url https://petstore.example.com/v1/pets/string
 components:
   schemas:
     Pet:

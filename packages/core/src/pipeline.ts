@@ -28,6 +28,10 @@ export type InjectOptions = {
   skipErrors?: boolean
   /** Invoked for each skipped operation (only when skipErrors is true). */
   onSkip?: (path: string, method: string, err: Error) => void
+  /** When true, un-annotated string fields in sample request bodies and
+   *  parameters get realistic placeholders inferred from their names
+   *  (e.g. `email` -> `user@example.com`) instead of the literal `"string"`. */
+  smartSamples?: boolean
 }
 
 /**
@@ -84,7 +88,7 @@ function enrichPathItem(
     try {
       newPathItem[method] = {
         ...originalOp,
-        'x-codeSamples': fetchSnippets(api, path, method, targets),
+        'x-codeSamples': fetchSnippets(api, path, method, targets, options),
       }
       modified = true
     } catch (err) {
@@ -106,13 +110,21 @@ export function fetchSnippets(
   path: string,
   method: string,
   targets: readonly string[],
+  options?: InjectOptions,
 ): Snippet[] {
-  return OpenAPISnippet.getEndpointSnippets(api, path, method, [...targets]).snippets.map(
-    (snippet: { title: string; content: string }) => ({
-      lang: snippet.title,
-      source: snippet.content,
-    }),
-  )
+  return OpenAPISnippet.getEndpointSnippets(
+    api,
+    path,
+    method,
+    [...targets],
+    {},
+    {
+      smartSamples: options?.smartSamples,
+    },
+  ).snippets.map((snippet: { title: string; content: string }) => ({
+    lang: snippet.title,
+    source: snippet.content,
+  }))
 }
 
 /**

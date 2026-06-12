@@ -24,19 +24,108 @@ import * as OpenAPISampler from 'openapi-sampler'
 
 type HarParameterObject = { name: string; value: string }
 
-const createHar = (openApi, path, method, queryParamValues = {}) => {
+/** Options controlling how sample values are generated for snippets. */
+type SampleOptions = { smartSamples?: boolean }
+
+/** The literal value openapi-sampler emits for a plain `string` with no
+ *  format/enum/example/default. We treat it as the "unfilled" marker. */
+const SAMPLER_STRING_DEFAULT = 'string'
+
+/**
+ * Pick an author-provided example off a media-type object, parameter, or
+ * schema: prefers `example`, else the first entry of `examples` (resolving a
+ * `$ref` and unwrapping its `.value`). Returns undefined when none is present.
+ */
+const pickExample = (openApi, container) => {
+  if (!container || typeof container !== 'object') return undefined
+  if (typeof container.example !== 'undefined') return container.example
+  if (container.examples && typeof container.examples === 'object') {
+    let first = Object.values(container.examples)[0]
+    if (first && typeof first.$ref === 'string' && /^#/.test(first.$ref)) {
+      first = resolveRefMemoized(openApi, first.$ref)
+    }
+    if (first && typeof first === 'object' && 'value' in first) return first.value
+    return first
+  }
+  return undefined
+}
+
+// Ordered name->value rules. First matching pattern wins, so more specific
+// patterns (e.g. first/last name) precede the generic `name`.
+const STRING_HEURISTICS: [RegExp, string][] = [
+  [/e-?mail/, 'user@example.com'],
+  [/url|uri|href|link|website|endpoint/, 'https://example.com'],
+  [/(^|_)id$|_id$|uuid|guid/, '3fa85f64-5717-4562-b3fc-2c963f66afa6'],
+  [/phone|mobile|msisdn/, '+15555550123'],
+  [/first.?name/, 'John'],
+  [/last.?name|surname/, 'Doe'],
+  [/name/, 'John Doe'],
+  [/datetime|timestamp|date.?time/, '2019-08-24T14:15:22Z'],
+  [/date/, '2019-08-24'],
+  [/time/, '14:15:22'],
+  [/currency/, 'USD'],
+  [/country/, 'US'],
+  [/zip|postal/, '94105'],
+  [/city/, 'San Francisco'],
+  [/state|province|region/, 'CA'],
+  [/address|street/, '123 Main St'],
+  [/colou?r/, 'blue'],
+  [/timezone|time.?zone/, 'America/Los_Angeles'],
+  [/lang|locale/, 'en-US'],
+  [/token|secret|password|api.?key/, 'REPLACE_ME'],
+  [/status/, 'active'],
+  [/type|kind|category/, 'default'],
+]
+
+/** Infer a realistic placeholder for an un-annotated string from its key. */
+const guessStringForKey = (key) => {
+  const k = String(key).toLowerCase()
+  for (const [pattern, value] of STRING_HEURISTICS) {
+    if (pattern.test(k)) return value
+  }
+  // Free-text-ish fields read better with the original key echoed back.
+  if (/description|summary|comment|message|title|label|note|text/.test(k)) return `Sample ${key}`
+  return SAMPLER_STRING_DEFAULT
+}
+
+/**
+ * Replace the sampler's neutral `'string'` default with a value inferred from
+ * the enclosing property name. Only values that are exactly `'string'` are
+ * touched, so real samples (formats, enums, author examples) are preserved.
+ */
+const applyStringHeuristics = (value, key) => {
+  if (Array.isArray(value)) return value.map((v) => applyStringHeuristics(v, key))
+  if (value && typeof value === 'object') {
+    const out = {}
+    for (const [k, v] of Object.entries(value)) out[k] = applyStringHeuristics(v, k)
+    return out
+  }
+  if (value === SAMPLER_STRING_DEFAULT && typeof key !== 'undefined') return guessStringForKey(key)
+  return value
+}
+
+/** Sample a schema, applying name-based heuristics when `smartSamples` is on. */
+const sampleSchema = (schema, openApi, options: SampleOptions = {}) => {
+  const sample = OpenAPISampler.sample(schema, { skipReadOnly: true }, openApi)
+  return options.smartSamples ? applyStringHeuristics(sample, undefined) : sample
+}
+
+const createHar = (openApi, path, method, queryParamValues = {}, options: SampleOptions = {}) => {
   const baseUrl = getBaseUrl(openApi, path, method)
 
   const baseHar = {
     method: method.toUpperCase(),
-    url: (baseUrl + getFullPath(openApi, path, method)).replace(
+    // getFullPath substitutes path parameters with their example/sample value;
+    // any parameter that still couldn't be resolved keeps its `{name}` brace,
+    // which we percent-encode so the URL stays syntactically valid.
+    url: (baseUrl + getFullPath(openApi, path, method, options)).replace(
       /\{([^}]+)\}/g,
       (_, n) => `%7B${n}%7D`,
     ),
-    headers: getHeadersArray(openApi, path, method),
-    queryString: getQueryStrings(openApi, path, method, queryParamValues),
+    headers: getHeadersArray(openApi, path, method, options),
+    queryString: getQueryStrings(openApi, path, method, queryParamValues, options),
     httpVersion: 'HTTP/1.1',
-    cookies: getCookies(openApi, path, method),
+    cookies: getCookies(openApi, path, method, options),
     headersSize: 0,
     bodySize: 0,
   }
@@ -44,7 +133,7 @@ const createHar = (openApi, path, method, queryParamValues = {}) => {
   let hars = []
 
   // get payload data, if available:
-  const postDatas = getPayloads(openApi, path, method)
+  const postDatas = getPayloads(openApi, path, method, options)
 
   // For each postData create a snippet
   if (postDatas.length > 0) {
@@ -225,7 +314,7 @@ const collectPathOrHeaderParams = (objects, name, value, style, explode, prefix,
   }
 }
 
-const getPayloads = (openApi, path, method) => {
+const getPayloads = (openApi, path, method, options: SampleOptions = {}) => {
   if (typeof openApi.paths[path][method].parameters !== 'undefined') {
     for (const param of openApi.paths[path][method].parameters) {
       if (
@@ -234,7 +323,9 @@ const getPayloads = (openApi, path, method) => {
         typeof param.schema !== 'undefined'
       ) {
         try {
-          const sample = OpenAPISampler.sample(param.schema, { skipReadOnly: true }, openApi)
+          const example = pickExample(openApi, param)
+          const sample =
+            typeof example !== 'undefined' ? example : sampleSchema(param.schema, openApi, options)
           return [
             {
               mimeType: 'application/json',
@@ -254,10 +345,10 @@ const getPayloads = (openApi, path, method) => {
     requestBody = resolveRefMemoized(openApi, requestBody.$ref)
   }
 
-  return collectRequestBodyPayloads(openApi, requestBody)
+  return collectRequestBodyPayloads(openApi, requestBody, options)
 }
 
-const collectRequestBodyPayloads = (openApi, requestBody) => {
+const collectRequestBodyPayloads = (openApi, requestBody, options: SampleOptions = {}) => {
   const payloads = []
   if (!requestBody?.content) return payloads
 
@@ -267,15 +358,24 @@ const collectRequestBodyPayloads = (openApi, requestBody) => {
     'multipart/form-data',
   ]) {
     const content = requestBody.content[type]
-    if (content?.schema) {
-      const sample = OpenAPISampler.sample(content.schema, { skipReadOnly: true }, openApi)
-      if (type === 'application/json') {
-        payloads.push({ mimeType: type, text: JSON.stringify(sample) })
-      } else if (type === 'multipart/form-data') {
-        appendMultipartPayload(payloads, type, sample)
-      } else if (type === 'application/x-www-form-urlencoded') {
-        appendFormUrlencodedPayload(payloads, type, sample)
-      }
+    if (!content) continue
+    // Prefer an author-provided example (media-type level), then the schema's
+    // own example via the sampler. Skip the type only when neither exists.
+    const example = pickExample(openApi, content)
+    let sample: unknown
+    if (typeof example !== 'undefined') {
+      sample = example
+    } else if (content.schema) {
+      sample = sampleSchema(content.schema, openApi, options)
+    } else {
+      continue
+    }
+    if (type === 'application/json') {
+      payloads.push({ mimeType: type, text: JSON.stringify(sample) })
+    } else if (type === 'multipart/form-data') {
+      appendMultipartPayload(payloads, type, sample)
+    } else if (type === 'application/x-www-form-urlencoded') {
+      appendFormUrlencodedPayload(payloads, type, sample)
     }
   }
   return payloads
@@ -324,27 +424,41 @@ const buildLegacyBaseUrl = (openApi) => {
   return `${scheme}://${host}${basePath}`
 }
 
-const getParameterValues = (openApi, param, location, values) => {
-  let value = `SOME_${(param.type || param.schema?.type || 'STRING').toUpperCase()}_VALUE`
-  if (location === 'path') {
-    // then default to the original place holder value (e.b. '{id}')
-    value = `{${param.name}}`
-  }
-
+const getParameterValues = (openApi, param, location, values, options: SampleOptions = {}) => {
+  // Resolve the most specific value available, in priority order:
+  // caller override -> example/examples -> schema.example -> default ->
+  // a generated sample of the schema. Only when none of these yield a value
+  // do we fall back to the literal placeholder.
+  let value: unknown
   if (values && typeof values[param.name] !== 'undefined') {
     value = values[param.name]
-  } else if (typeof param.example !== 'undefined') {
-    value = param.example
-  } else if (typeof param.examples !== 'undefined') {
-    let firstExample = Object.values(param.examples)[0]
-    if (typeof firstExample.$ref === 'string' && /^#/.test(firstExample.$ref)) {
-      firstExample = resolveRefMemoized(openApi, firstExample.$ref)
-    }
-    value = firstExample.value
-  } else if (typeof param.schema !== 'undefined' && typeof param.schema.example !== 'undefined') {
+  } else {
+    const example = pickExample(openApi, param)
+    if (typeof example !== 'undefined') value = example
+  }
+  if (typeof value === 'undefined' && param.schema && typeof param.schema.example !== 'undefined') {
     value = param.schema.example
-  } else if (typeof param.default !== 'undefined') {
+  }
+  if (typeof value === 'undefined' && typeof param.default !== 'undefined') {
     value = param.default
+  }
+  if (typeof value === 'undefined' && typeof param.schema !== 'undefined') {
+    try {
+      value = sampleSchema(param.schema, openApi, options)
+    } catch {
+      // fall through to the literal placeholder below
+    }
+  }
+  if (typeof value === 'undefined') {
+    value =
+      location === 'path'
+        ? `{${param.name}}`
+        : `SOME_${(param.type || param.schema?.type || 'STRING').toUpperCase()}_VALUE`
+  }
+  // A plain-string sample comes back as the neutral 'string'; under smart
+  // samples, infer something realistic from the parameter name.
+  if (options.smartSamples && value === SAMPLER_STRING_DEFAULT) {
+    value = guessStringForKey(param.name)
   }
 
   return createHarParameterObjects(param, value)
@@ -353,7 +467,13 @@ const getParameterValues = (openApi, param, location, values) => {
 /**
  * Parse parameter object into query string objects
  */
-const parseParametersToQuery = (openApi, parameters, location, values) => {
+const parseParametersToQuery = (
+  openApi,
+  parameters,
+  location,
+  values,
+  options: SampleOptions = {},
+) => {
   /** @type {Object.<string, HarParameterObject[]>} */
   const queryStrings: Record<string, HarParameterObject[]> = {}
 
@@ -373,7 +493,7 @@ const parseParametersToQuery = (openApi, parameters, location, values) => {
     if (typeof param.in !== 'undefined' && param.in.toLowerCase() === location) {
       // param.name is a safe key, because the spec defines
       // that name MUST be unique
-      queryStrings[param.name] = getParameterValues(openApi, param, location, values)
+      queryStrings[param.name] = getParameterValues(openApi, param, location, values, options)
     }
   }
 
@@ -384,7 +504,14 @@ const parseParametersToQuery = (openApi, parameters, location, values) => {
  * Examines all of the parameters in the specified path and operation looking
  * for those of the specific `location` specified.
  */
-const getParameterCollectionIn = (openApi, path, method, location, values = {}) => {
+const getParameterCollectionIn = (
+  openApi,
+  path,
+  method,
+  location,
+  values = {},
+  options: SampleOptions = {},
+) => {
   /** @type {Object.<string, HarParameterObject[]>} */
   let pathParameters: Record<string, HarParameterObject[]> = {}
 
@@ -398,6 +525,7 @@ const getParameterCollectionIn = (openApi, path, method, location, values = {}) 
       openApi.paths[path].parameters,
       location,
       values,
+      options,
     )
   }
 
@@ -407,6 +535,7 @@ const getParameterCollectionIn = (openApi, path, method, location, values = {}) 
       openApi.paths[path][method].parameters,
       location,
       values,
+      options,
     )
   }
 
@@ -431,16 +560,21 @@ const getParameterCollectionIn = (openApi, path, method, location, values = {}) 
  * Get array of objects describing the query parameters for a path and method
  * pair described in the given OpenAPI document.
  */
-const getQueryStrings = (openApi, path, method, values): HarParameterObject[] =>
-  getParameterCollectionIn(openApi, path, method, 'query', values)
+const getQueryStrings = (
+  openApi,
+  path,
+  method,
+  values,
+  options: SampleOptions = {},
+): HarParameterObject[] => getParameterCollectionIn(openApi, path, method, 'query', values, options)
 
 /**
  * Return the path with the parameters example values used if specified.
  */
-const getFullPath = (openApi, path, method) => {
+const getFullPath = (openApi, path, method, options: SampleOptions = {}) => {
   let fullPath = path
 
-  const pathParameters = getParameterCollectionIn(openApi, path, method, 'path')
+  const pathParameters = getParameterCollectionIn(openApi, path, method, 'path', {}, options)
   pathParameters.forEach(({ name, value }) => {
     fullPath = fullPath.replace(`{${name}}`, value)
   })
@@ -451,19 +585,19 @@ const getFullPath = (openApi, path, method) => {
 /**
  * Get an array of objects providing sample values for cookies
  */
-const getCookies = (openApi, path, method) =>
-  getParameterCollectionIn(openApi, path, method, 'cookie')
+const getCookies = (openApi, path, method, options: SampleOptions = {}) =>
+  getParameterCollectionIn(openApi, path, method, 'cookie', {}, options)
 
 /**
  * Get an array of objects describing the header for a path and method pair
  * described in the given OpenAPI document.
  */
-const getHeadersArray = (openApi, path, method) => {
+const getHeadersArray = (openApi, path, method, options: SampleOptions = {}) => {
   const headers = []
   const pathObj = openApi.paths[path][method]
 
   headers.push(...collectAcceptHeaders(pathObj))
-  headers.push(...getParameterCollectionIn(openApi, path, method, 'header'))
+  headers.push(...getParameterCollectionIn(openApi, path, method, 'header', {}, options))
   headers.push(...collectAuthHeaders(openApi, pathObj))
 
   return headers
@@ -540,14 +674,14 @@ const deriveAuthScheme = (secDefinition, authType) => {
 /**
  * Produces array of HAR files for given OpenAPI document
  */
-const openApiToHarList = (openApi) => {
+const openApiToHarList = (openApi, options: SampleOptions = {}) => {
   try {
     // iterate openApi and create har objects:
     const harList = []
     for (const path in openApi.paths) {
       for (const method in openApi.paths[path]) {
         const url = getBaseUrl(openApi, path, method) + path
-        const hars = createHar(openApi, path, method)
+        const hars = createHar(openApi, path, method, {}, options)
         // need to push multiple here
         harList.push({
           method: method.toUpperCase(),
