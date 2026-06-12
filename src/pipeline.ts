@@ -228,18 +228,30 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c)
 }
 
+/** Options for {@link renderHtml}. */
+export type RenderHtmlOptions = {
+  /** Standalone Redoc bundle source to inline, making the page fully
+   *  self-contained (offline). When omitted, the page loads the bundle from
+   *  {@link REDOC_BUNDLE_URL} at view time. */
+  inlineBundle?: string
+}
+
 /**
- * Render a standalone Redoc HTML page for the given spec. The spec is inlined
- * (so the page is self-contained apart from the Redoc bundle, which is loaded
- * from {@link REDOC_BUNDLE_URL}). Redoc renders `x-codeSamples` natively, so an
- * enriched spec shows its code snippets.
+ * Render a standalone Redoc HTML page for the given spec. The spec is inlined,
+ * and the Redoc bundle is either inlined (when `options.inlineBundle` is given,
+ * yielding a fully offline page) or loaded from {@link REDOC_BUNDLE_URL}. Redoc
+ * renders `x-codeSamples` natively, so an enriched spec shows its code snippets.
  *
- * `<` characters in the inlined JSON are escaped to `<` so a string such
- * as `</script>` in the spec cannot break out of the script tag.
+ * `<` characters in the inlined spec JSON are escaped to `<`, and any
+ * `</script>` in the inlined bundle is broken up, so neither can terminate the
+ * surrounding script tag.
  */
-export function renderHtml(api: OpenAPI.Document): string {
+export function renderHtml(api: OpenAPI.Document, options?: RenderHtmlOptions): string {
   const title = (api as { info?: { title?: string } }).info?.title ?? 'API documentation'
   const specJson = JSON.stringify(api).replace(/</g, '\\u003c')
+  const bundleTag = options?.inlineBundle
+    ? `<script>${options.inlineBundle.replace(/<\/(script)/gi, '<\\/$1')}</script>`
+    : `<script src="${REDOC_BUNDLE_URL}"></script>`
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -250,7 +262,7 @@ export function renderHtml(api: OpenAPI.Document): string {
   </head>
   <body>
     <div id="redoc"></div>
-    <script src="${REDOC_BUNDLE_URL}"></script>
+    ${bundleTag}
     <script>
       Redoc.init(${specJson}, {}, document.getElementById('redoc'))
     </script>

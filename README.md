@@ -101,6 +101,14 @@ The spec is inlined into the page, so it's self-contained except for the Redoc
 bundle, which is loaded from a CDN at view time (the page needs network access
 the first time it renders).
 
+Add `--inline-redoc` to embed the Redoc bundle directly, producing a single
+fully offline HTML file (no network needed to view it, at the cost of a larger
+file):
+
+```sh-session
+$ openapi-snippet schema.yaml -e html --inline-redoc -o dist/docs.html
+```
+
 ## Choosing Targets
 ```sh-session
 $ openapi-snippet schema.yaml -t java -t c -o dist/schema.json
@@ -198,6 +206,7 @@ OPTIONS
   -e, --ext=yaml|json|html    [default: yaml] output format (html = a standalone Redoc page)
       --dry-run               print the resolved spec to stdout instead of writing to --output
   -h, --help                  show CLI help
+      --inline-redoc          with -e html, inline the Redoc bundle for a fully offline page (no CDN)
       --list-targets          print the list of valid --targets values and exit
   -o, --output=output         [default: output.yaml] output file name. Ignored when --dry-run.
       --skip-errors           skip operations whose snippet generation fails (warn on stderr) instead of aborting

@@ -207,4 +207,18 @@ describe('renderHtml', () => {
     const html = renderHtml(t as unknown as OpenAPI.Document)
     assert.match(html, /<title>a&lt;b&gt;&amp;&quot;c<\/title>/)
   })
+
+  it('inlines the Redoc bundle (no CDN reference) when given inlineBundle', () => {
+    const bundle = 'window.Redoc = { init() {} };/* pretend bundle */'
+    const html = renderHtml(api, { inlineBundle: bundle })
+    assert.doesNotMatch(html, /src="https:\/\/cdn/, 'should not reference the CDN when inlined')
+    assert.ok(html.includes(bundle), 'should embed the bundle source')
+  })
+
+  it('neutralizes a </script> sequence inside the inlined bundle', () => {
+    const bundle = 'var s = "</script><script>evil()";'
+    const html = renderHtml(api, { inlineBundle: bundle })
+    assert.ok(!html.includes('</script><script>evil()'), 'closing tag must be broken up')
+    assert.match(html, /<\\\/script>/, 'should escape the closing tag as <\\/script>')
+  })
 })

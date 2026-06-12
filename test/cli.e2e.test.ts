@@ -661,4 +661,15 @@ describe('CLI — html output', () => {
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stderr, /--chunk-size only speeds up YAML/i)
   })
+
+  it('produces a self-contained page (no CDN) with --inline-redoc', () => {
+    const out = outFile('docs-offline.html')
+    const r = cli([specFile(), '-o', out, '-e', 'html', '-t', 'shell_curl', '--inline-redoc'])
+    assert.equal(r.status, 0, r.stderr)
+    const html = readFileSync(out, 'utf8')
+    assert.doesNotMatch(html, /src="https:\/\/cdn\.redocly\.com/, 'should not reference the CDN')
+    // The inlined standalone bundle is large; the page should dwarf the CDN variant.
+    assert.ok(html.length > 200_000, `expected an inlined bundle, page was ${html.length} bytes`)
+    assert.match(html, /Redoc\.init\(/)
+  })
 })

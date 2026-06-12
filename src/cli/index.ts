@@ -1,4 +1,5 @@
 import * as fs from 'node:fs'
+import { createRequire } from 'node:module'
 import * as path from 'node:path'
 import { debuglog, format } from 'node:util'
 import { parse as parseOpenAPI } from '@readme/openapi-parser'
@@ -11,7 +12,13 @@ import {
 } from '@stricli/core'
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
-import { type InjectOptions, injectSnippets, renderHtml, serializeChunked } from '../pipeline.ts'
+import {
+  type InjectOptions,
+  injectSnippets,
+  type RenderHtmlOptions,
+  renderHtml,
+  serializeChunked,
+} from '../pipeline.ts'
 
 /**
  * Warn when the no-chunk path would dominate runtime on a large spec.
@@ -98,6 +105,7 @@ interface CliFlags {
   readonly verbose: boolean
   readonly chunkSize: number
   readonly skipErrors: boolean
+  readonly inlineRedoc: boolean
 }
 
 const pkgVersion = (() => {
@@ -176,12 +184,14 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   // injects once here. Computing it lazily avoids a wasted full injection
   // (and duplicate onSkip warnings) on the chunked path.
   const useChunked = flags.chunkSize > 0 && ext === 'yaml'
+  const htmlOptions: RenderHtmlOptions | undefined =
+    ext === 'html' && flags.inlineRedoc ? { inlineBundle: readRedocBundle() } : undefined
 
   if (flags.dryRun) {
     if (useChunked) {
       serializeChunked(api, targets, 'yaml', flags.chunkSize, proc.stdout as never, injectOptions)
     } else {
-      const output = serialize(injectSnippets(api, targets, injectOptions), ext)
+      const output = serialize(injectSnippets(api, targets, injectOptions), ext, htmlOptions)
       proc.stdout.write(output)
       trace('dry-run: wrote %d bytes to stdout', output.length)
     }
@@ -197,10 +207,16 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
     stream.end()
     trace('wrote chunked output to %s', absoluteFileName)
   } else {
-    const output = serialize(injectSnippets(api, targets, injectOptions), ext)
+    const output = serialize(injectSnippets(api, targets, injectOptions), ext, htmlOptions)
     fs.writeFileSync(absoluteFileName, output)
     trace('wrote %d bytes to %s', output.length, absoluteFileName)
   }
+}
+
+/** Read the Redoc standalone bundle shipped by the `redoc` dependency. */
+function readRedocBundle(): string {
+  const require = createRequire(import.meta.url)
+  return fs.readFileSync(require.resolve('redoc/bundles/redoc.standalone.js'), 'utf8')
 }
 
 const command = buildCommand<CliFlags, [file?: string], LocalContext>({
@@ -280,6 +296,11 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
         kind: 'boolean',
         brief:
           'skip operations whose snippet generation fails (warn on stderr) instead of aborting',
+        default: false,
+      },
+      inlineRedoc: {
+        kind: 'boolean',
+        brief: 'with -e html, inline the Redoc bundle for a fully offline page (no CDN)',
         default: false,
       },
     },
@@ -364,9 +385,13 @@ function resolveTargets(input: readonly string[] | undefined): string[] {
   return resolved
 }
 
-function serialize(api: OpenAPI.Document, ext: 'yaml' | 'json' | 'html'): string {
+function serialize(
+  api: OpenAPI.Document,
+  ext: 'yaml' | 'json' | 'html',
+  htmlOptions?: RenderHtmlOptions,
+): string {
   if (ext === 'yaml') return yaml.dump(api)
-  if (ext === 'html') return renderHtml(api)
+  if (ext === 'html') return renderHtml(api, htmlOptions)
   return JSON.stringify(api, null, 2)
 }
 
