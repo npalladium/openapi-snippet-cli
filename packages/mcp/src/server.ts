@@ -28,8 +28,18 @@ function fail(err: unknown): ToolResult {
 
 export type ServerInfo = { name?: string; version?: string }
 
-/** Build (but do not connect) an MCP server exposing the spec's tools. */
-export function buildMcpServer(api: OpenAPI.Document, info?: ServerInfo): McpServer {
+/**
+ * Build (but do not connect) an MCP server exposing the spec's tools.
+ *
+ * `api` should be dereferenced (so inspection tools return resolved schemas).
+ * `rawApi` is the non-dereferenced document used by the schema-codegen tools so
+ * they can emit named models; it defaults to `api` when not supplied.
+ */
+export function buildMcpServer(
+  api: OpenAPI.Document,
+  info?: ServerInfo,
+  rawApi: OpenAPI.Document = api,
+): McpServer {
   const server = new McpServer({
     name: info?.name ?? 'openapi-snippet',
     version: info?.version ?? '0.0.0',
@@ -113,11 +123,50 @@ export function buildMcpServer(api: OpenAPI.Document, info?: ServerInfo): McpSer
     },
   )
 
+  server.registerTool(
+    'generate_models',
+    {
+      description:
+        'Generate typed data models from components.schemas. `target` is one of ' +
+        'typescript_zod, typescript_valibot, python_pydantic.',
+      inputSchema: { target: z.string() },
+    },
+    ({ target }) => {
+      try {
+        return ok(tools.generateModels(rawApi, target))
+      } catch (err) {
+        return fail(err)
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_typed_snippet',
+    {
+      description:
+        'Generate a self-contained typed request snippet (inline models + request + ' +
+        'typed parse) for an operation. `target` is one of typescript_zod, ' +
+        'typescript_valibot, python_pydantic.',
+      inputSchema: { path: z.string(), method: z.string(), target: z.string() },
+    },
+    ({ path, method, target }) => {
+      try {
+        return ok(tools.getTypedSnippet(rawApi, path, method, target))
+      } catch (err) {
+        return fail(err)
+      }
+    },
+  )
+
   return server
 }
 
 /** Build the server and serve it over stdio until the client disconnects. */
-export async function runMcpStdio(api: OpenAPI.Document, info?: ServerInfo): Promise<void> {
-  const server = buildMcpServer(api, info)
+export async function runMcpStdio(
+  api: OpenAPI.Document,
+  info?: ServerInfo,
+  rawApi?: OpenAPI.Document,
+): Promise<void> {
+  const server = buildMcpServer(api, info, rawApi)
   await server.connect(new StdioServerTransport())
 }

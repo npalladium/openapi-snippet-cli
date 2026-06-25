@@ -3,7 +3,14 @@
  * dereferenced) OpenAPI document and returns plain data, so it can be unit
  * tested without the MCP transport.
  */
-import { getEndpointSnippets, HTTP_METHODS } from '@openapi-snippet/core'
+import {
+  generateModels as coreGenerateModels,
+  generateTypedSnippet,
+  getEndpointSnippets,
+  HTTP_METHODS,
+  isSchemaTarget,
+  SCHEMA_TARGET_IDS,
+} from '@openapi-snippet/core'
 import type { OpenAPI } from 'openapi-types'
 
 type AnyRecord = Record<string, unknown>
@@ -120,5 +127,44 @@ export function getCodeSnippets(
     method: result.method,
     url: result.url,
     snippets: result.snippets.map((s) => ({ id: s.id, title: s.title, content: s.content })),
+  }
+}
+
+function assertSchemaTarget(target: string): void {
+  if (!isSchemaTarget(target)) {
+    throw new Error(`Unknown schema target "${target}". Valid: ${SCHEMA_TARGET_IDS.join(', ')}.`)
+  }
+}
+
+export type ModelsResult = { target: string; code: string }
+
+/**
+ * Generate a typed models module (Pydantic/Zod/Valibot) from the spec's
+ * `components.schemas`. Pass a NON-dereferenced document so $refs resolve to
+ * named models rather than inlined copies.
+ */
+export function generateModels(api: OpenAPI.Document, target: string): ModelsResult {
+  assertSchemaTarget(target)
+  return { target, code: coreGenerateModels(schemasOf(api), target) }
+}
+
+export type TypedSnippetResult = { target: string; code: string }
+
+/** Generate a self-contained typed request snippet for one operation. */
+export function getTypedSnippet(
+  api: OpenAPI.Document,
+  path: string,
+  method: string,
+  target: string,
+): TypedSnippetResult {
+  assertSchemaTarget(target)
+  return {
+    target,
+    code: generateTypedSnippet(
+      api as unknown as Record<string, unknown>,
+      path,
+      method.toLowerCase(),
+      target,
+    ),
   }
 }

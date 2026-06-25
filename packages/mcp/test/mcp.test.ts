@@ -87,6 +87,36 @@ describe('mcp tools', () => {
     assert.ok(r.snippets.length > 0)
     assert.equal(r.snippets[0].id, 'shell_curl')
   })
+
+  it('generateModels emits a named model module and rejects bad targets', () => {
+    const r = tools.generateModels(spec, 'typescript_zod')
+    assert.equal(r.target, 'typescript_zod')
+    assert.match(r.code, /export const User = z\.object\(/)
+    assert.throws(() => tools.generateModels(spec, 'nope'), /Unknown schema target/)
+  })
+
+  it('getTypedSnippet inlines the response model and parses through it', () => {
+    const withBody = {
+      ...spec,
+      paths: {
+        '/users/{id}': {
+          get: {
+            operationId: 'getUser',
+            responses: {
+              '200': {
+                description: 'OK',
+                content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as OpenAPI.Document
+    const r = tools.getTypedSnippet(withBody, '/users/{id}', 'get', 'python_pydantic')
+    assert.equal(r.target, 'python_pydantic')
+    assert.match(r.code, /class User\(BaseModel\):/)
+    assert.match(r.code, /User\.model_validate\(response\.json\(\)\)/)
+  })
 })
 
 describe('mcp server (in-memory round trip)', () => {
@@ -101,10 +131,12 @@ describe('mcp server (in-memory round trip)', () => {
     const { tools: listed } = await client.listTools()
     const names = listed.map((t) => t.name).sort()
     assert.deepEqual(names, [
+      'generate_models',
       'get_code_snippets',
       'get_endpoint',
       'get_overview',
       'get_schema',
+      'get_typed_snippet',
       'list_endpoints',
       'search_endpoints',
     ])
@@ -113,6 +145,12 @@ describe('mcp server (in-memory round trip)', () => {
       content: Array<{ type: string; text: string }>
     }
     assert.match(res.content[0].text, /Test API/)
+
+    const models = (await client.callTool({
+      name: 'generate_models',
+      arguments: { target: 'typescript_valibot' },
+    })) as { content: Array<{ type: string; text: string }> }
+    assert.match(models.content[0].text, /export const User = v\.object/)
 
     await client.close()
     await server.close()

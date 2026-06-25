@@ -30,8 +30,12 @@ async function runMcp(
       )
     }
     // Dereference so tools return resolved schemas; circular refs are kept.
-    const api = await dereferenceSpec(await loadSpec({ source: file, stdin: false }))
-    await runMcpStdio(api, { name: 'openapi-mcp', version: pkgVersion })
+    // Keep a separate non-dereferenced copy so the schema-codegen tools can
+    // emit named models (a resolved doc would inline every $ref).
+    const source = { source: file, stdin: false }
+    const rawApi = await loadSpec(source)
+    const api = await dereferenceSpec(await loadSpec(source))
+    await runMcpStdio(api, { name: 'openapi-mcp', version: pkgVersion }, rawApi)
     return undefined
   } catch (err) {
     return err instanceof Error ? err : new Error(String(err))
