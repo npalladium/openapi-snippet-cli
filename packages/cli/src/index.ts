@@ -5,12 +5,16 @@ import { debuglog, format } from 'node:util'
 import {
   CliError,
   ExitCode,
+  generateModels,
   type InjectOptions,
   injectSnippets,
+  isSchemaTarget,
   loadSpec,
   type RenderHtmlOptions,
   renderHtml,
   renderTagIndexHtml,
+  SCHEMA_TARGET_IDS,
+  SCHEMA_TARGETS,
   serializeChunked,
   slugifyTag,
   splitByTag,
@@ -35,7 +39,8 @@ export { CliError, ExitCode } from '@openapi-snippet/core'
  */
 export const LARGE_SPEC_PATH_THRESHOLD = 5000
 
-export const allTargets = [
+/** httpsnippet (HTTP-request) targets — the default set when none are given. */
+export const httpTargets = [
   'c_libcurl',
   'csharp_restsharp',
   'go_native',
@@ -60,6 +65,13 @@ export const allTargets = [
   'shell_wget',
   'swift_nsurlsession',
 ]
+
+/**
+ * All recognized targets: httpsnippet request targets plus the schema-codegen
+ * targets (zod/valibot/pydantic). Schema targets are opt-in — they are NOT in
+ * the default set, so a bare run keeps emitting only HTTP-request samples.
+ */
+export const allTargets = [...httpTargets, ...SCHEMA_TARGET_IDS]
 
 const debug = debuglog('openapi-snippet')
 
@@ -97,6 +109,7 @@ interface CliFlags {
   readonly inlineRedoc: boolean
   readonly smartSamples: boolean
   readonly splitByTag: boolean
+  readonly schemaModelsDir?: string
 }
 
 const pkgVersion = (() => {
@@ -164,6 +177,18 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
 
   const targets = resolveTargets(flags.targets)
   trace('targets: %o', targets)
+
+  // Optionally emit canonical, de-duplicated model files for schema targets.
+  // These are additive to the enriched document written below.
+  if (flags.schemaModelsDir) {
+    if (flags.dryRun) {
+      throw new CliError(
+        '--schema-models-dir writes files and cannot be combined with --dry-run.',
+        ExitCode.USER_ERROR,
+      )
+    }
+    writeSchemaModels(proc, api, targets, flags.schemaModelsDir)
+  }
 
   const injectOptions: InjectOptions = {
     skipErrors: flags.skipErrors,
@@ -289,7 +314,8 @@ function resolveInput(
 
 function resolveTargets(input: readonly string[] | undefined): string[] {
   const inputTargets = input?.flatMap((t) => t.split(',')) ?? []
-  const resolved = (inputTargets.length ? inputTargets : allTargets)
+  // Default to HTTP targets only; schema targets must be requested explicitly.
+  const resolved = (inputTargets.length ? inputTargets : httpTargets)
     .map((arg) => allTargets.find((target) => target.startsWith(arg)))
     .filter((t): t is string => t !== undefined)
   if (inputTargets.length && resolved.length === 0) {
@@ -351,6 +377,37 @@ function writeSplitByTag(
   proc.stderr.write(`Wrote ${entries.length} ${ext} file(s) to ${dir}\n`)
 }
 
+/**
+ * Write one canonical, de-duplicated models file per requested schema target
+ * (e.g. `models.zod.ts`, `models.py`) into `dir`, generated from the spec's
+ * `components.schemas`. Warns when no schema targets were requested.
+ */
+function writeSchemaModels(
+  proc: NodeJS.Process,
+  api: OpenAPI.Document,
+  targets: readonly string[],
+  dir: string,
+): void {
+  const schemaTargets = targets.filter((t) => isSchemaTarget(t))
+  if (schemaTargets.length === 0) {
+    proc.stderr.write(
+      '--schema-models-dir was set, but --targets has no schema targets ' +
+        '(typescript_zod, typescript_valibot, python_pydantic); nothing written.\n',
+    )
+    return
+  }
+  const schemas = ((api as { components?: { schemas?: Record<string, unknown> } }).components
+    ?.schemas ?? {}) as Record<string, unknown>
+  const absDir = path.resolve(dir)
+  fs.mkdirSync(absDir, { recursive: true })
+  for (const t of schemaTargets) {
+    const target = SCHEMA_TARGETS[t]
+    fs.writeFileSync(path.join(absDir, target.fileName), generateModels(schemas, t))
+    trace('wrote %s', target.fileName)
+  }
+  proc.stderr.write(`Wrote ${schemaTargets.length} model file(s) to ${absDir}\n`)
+}
+
 const command = buildCommand<CliFlags, [file?: string], LocalContext>({
   docs: {
     brief: 'Add code snippets to an OpenAPI spec in redoc style (x-codeSamples)',
@@ -382,7 +439,8 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
         brief:
           'target snippet languages + frameworks. Repeatable, and comma-separated ' +
           'values are accepted. A language-only value resolves to its default ' +
-          'framework. Defaults to ALL supported targets.',
+          'framework. Defaults to all HTTP-request targets; the schema targets ' +
+          '(typescript_zod, typescript_valibot, python_pydantic) are opt-in.',
       },
       ext: {
         kind: 'parsed',
@@ -448,6 +506,15 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
           'write a folder with one file per tag (--output is treated as a directory). ' +
           'Components are pruned to each tag, and -e html also emits an index.html.',
         default: false,
+      },
+      schemaModelsDir: {
+        kind: 'parsed',
+        parse: String,
+        optional: true,
+        brief:
+          'also write canonical model files for any schema targets in --targets ' +
+          '(typescript_zod -> models.zod.ts, typescript_valibot -> models.valibot.ts, ' +
+          'python_pydantic -> models.py) into this directory. Cannot be used with --dry-run.',
       },
     },
     aliases: {

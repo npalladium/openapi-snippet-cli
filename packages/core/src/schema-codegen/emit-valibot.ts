@@ -107,7 +107,7 @@ function valibotArray(ir: Extract<Ir, { kind: 'array' }>): string {
 }
 
 function valibotObject(ir: Extract<Ir, { kind: 'object' }>): string {
-  const hasRest = ir.additional && ir.additional !== false
+  const hasRest = ir.additional !== undefined && ir.additional !== false
   if (ir.properties.length === 0) {
     if (hasRest) return `v.record(v.string(), ${valibotType(ir.additional as Ir)})`
     return ir.additional === false ? 'v.strictObject({})' : 'v.object({})'

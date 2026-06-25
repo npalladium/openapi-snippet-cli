@@ -101,7 +101,7 @@ function zodArray(ir: Extract<Ir, { kind: 'array' }>): string {
 
 function zodObject(ir: Extract<Ir, { kind: 'object' }>): string {
   if (ir.properties.length === 0) {
-    if (ir.additional && ir.additional !== false) {
+    if (ir.additional !== undefined && ir.additional !== false) {
       return `z.record(z.string(), ${zodType(ir.additional)})`
     }
     return ir.additional === false ? 'z.object({}).strict()' : 'z.object({})'

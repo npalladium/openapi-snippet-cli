@@ -395,6 +395,118 @@ describe('CLI — --list-targets', () => {
   })
 })
 
+// ─── Schema-codegen targets (zod / valibot / pydantic) ──────────────────────
+
+const SCHEMA_SPEC = JSON.stringify({
+  openapi: '3.0.0',
+  info: { title: 'Schema API', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
+  paths: {
+    '/widgets/{id}': {
+      get: {
+        operationId: 'getWidget',
+        responses: {
+          '200': {
+            description: 'OK',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Widget' } } },
+          },
+        },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      Widget: {
+        type: 'object',
+        required: ['id'],
+        properties: { id: { type: 'integer' }, label: { type: 'string' } },
+      },
+    },
+  },
+})
+
+describe('CLI — schema-codegen targets', () => {
+  it('--list-targets includes the schema targets', () => {
+    const r = cli(['--list-targets'])
+    assert.equal(r.status, 0, r.stderr)
+    const lines = r.stdout.trim().split('\n')
+    assert.ok(lines.includes('typescript_zod'))
+    assert.ok(lines.includes('python_pydantic'))
+  })
+
+  it('injects a typed Zod snippet into x-codeSamples', () => {
+    const out = outFile('zod.yaml')
+    const r = cli([specFile('schema.json', SCHEMA_SPEC), '-o', out, '-t', 'typescript_zod'])
+    assert.equal(r.status, 0, r.stderr)
+    const samples = readYaml(out).paths['/widgets/{id}'].get['x-codeSamples']
+    assert.equal(samples[0].lang, 'Typescript + Zod')
+    assert.match(samples[0].source, /Widget\.parse\(/)
+  })
+
+  it('does NOT emit schema targets by default (HTTP targets only)', () => {
+    const out = outFile('default.yaml')
+    const r = cli([specFile('schema-def.json', SCHEMA_SPEC), '-o', out])
+    assert.equal(r.status, 0, r.stderr)
+    const langs = readYaml(out).paths['/widgets/{id}'].get['x-codeSamples'].map((s) => s.lang)
+    assert.ok(
+      !langs.some((l) => /Zod|Valibot|Pydantic/.test(l)),
+      `unexpected schema lang in ${langs}`,
+    )
+  })
+
+  it('--schema-models-dir writes canonical model files', () => {
+    const out = outFile('models-doc.yaml')
+    const dir = outFile('models-out')
+    const r = cli([
+      specFile('schema-models.json', SCHEMA_SPEC),
+      '-o',
+      out,
+      '-t',
+      'typescript_zod,python_pydantic',
+      '--schema-models-dir',
+      dir,
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(existsSync(join(dir, 'models.zod.ts')), 'models.zod.ts written')
+    assert.ok(existsSync(join(dir, 'models.py')), 'models.py written')
+    assert.match(
+      readFileSync(join(dir, 'models.zod.ts'), 'utf8'),
+      /export const Widget = z\.object/,
+    )
+    assert.match(readFileSync(join(dir, 'models.py'), 'utf8'), /class Widget\(BaseModel\)/)
+  })
+
+  it('warns (but succeeds) when --schema-models-dir has no schema targets', () => {
+    const out = outFile('no-schema-doc.yaml')
+    const dir = outFile('no-schema-out')
+    const r = cli([
+      specFile('schema-noschema.json', SCHEMA_SPEC),
+      '-o',
+      out,
+      '-t',
+      'shell_curl',
+      '--schema-models-dir',
+      dir,
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stderr, /no schema targets/)
+  })
+
+  it('rejects --schema-models-dir with --dry-run', () => {
+    const dir = outFile('dry-models-out')
+    const r = cli([
+      specFile('schema-dry.json', SCHEMA_SPEC),
+      '--dry-run',
+      '-t',
+      'typescript_zod',
+      '--schema-models-dir',
+      dir,
+    ])
+    assert.equal(r.status, 1, r.stderr)
+    assert.match(r.stderr, /cannot be combined with --dry-run/)
+  })
+})
+
 describe('CLI — --stdin', () => {
   it('reads the spec from stdin when piped', async () => {
     const out = outFile('stdin.yaml')

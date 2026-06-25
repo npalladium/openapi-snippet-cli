@@ -51,7 +51,9 @@ export function collectRefs(ir: Ir, into: Set<string> = new Set()): Set<string> 
       break
     case 'object':
       for (const p of ir.properties) collectRefs(p.schema, into)
-      if (ir.additional && ir.additional !== false) collectRefs(ir.additional, into)
+      if (ir.additional !== undefined && ir.additional !== false) {
+        collectRefs(ir.additional, into)
+      }
       break
     case 'union':
       for (const o of ir.options) collectRefs(o, into)
