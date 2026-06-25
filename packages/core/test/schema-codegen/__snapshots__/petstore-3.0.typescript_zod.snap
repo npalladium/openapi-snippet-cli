@@ -1,0 +1,18 @@
+import { z } from 'zod'
+
+export const Pet = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  tag: z.string().optional(),
+})
+export type Pet = z.infer<typeof Pet>
+
+export const Pets = z.array(Pet)
+export type Pets = z.infer<typeof Pets>
+
+export const Error = z.object({
+  id: z.number().int().optional(),
+  code: z.number().int(),
+  message: z.string(),
+})
+export type Error = z.infer<typeof Error>

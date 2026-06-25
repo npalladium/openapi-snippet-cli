@@ -1,0 +1,18 @@
+import * as v from 'valibot'
+
+export const Pet = v.object({
+  id: v.pipe(v.number(), v.integer()),
+  name: v.string(),
+  tag: v.optional(v.string()),
+})
+export type Pet = v.InferOutput<typeof Pet>
+
+export const Pets = v.array(Pet)
+export type Pets = v.InferOutput<typeof Pets>
+
+export const Error = v.object({
+  id: v.optional(v.pipe(v.number(), v.integer())),
+  code: v.pipe(v.number(), v.integer()),
+  message: v.string(),
+})
+export type Error = v.InferOutput<typeof Error>
