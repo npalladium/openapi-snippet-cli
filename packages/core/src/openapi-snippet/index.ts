@@ -8,6 +8,8 @@
  * License: MIT
  */
 import { availableTargets, HTTPSnippet } from 'httpsnippet'
+import { isSchemaTarget, SCHEMA_TARGETS } from '../schema-codegen/registry.ts'
+import { generateTypedSnippet } from '../schema-codegen/snippet.ts'
 import * as OpenAPIToHar from './openapi-to-har.ts'
 
 const METHOD_ORDER = ['get', 'post', 'put', 'delete', 'patch']
@@ -17,15 +19,29 @@ const METHOD_ORDER = ['get', 'post', 'put', 'delete', 'patch']
  * OpenAPI document.
  */
 const getEndpointSnippets = (openApi, path, method, targets, values = {}, options = {}) => {
+  // Schema-codegen targets (zod/valibot/pydantic) are not httpsnippet targets;
+  // they emit typed request snippets from the operation's response schema.
+  const httpTargets = targets.filter((t) => !isSchemaTarget(t))
+  const schemaTargets = targets.filter((t) => isSchemaTarget(t))
+
   const hars = OpenAPIToHar.getEndpoint(openApi, path, method, values, options)
+
+  if (hars.length === 0) throw new Error(`No HAR for ${method.toUpperCase()} ${path}`)
 
   const snippets = []
   for (const har of hars) {
     const snippet = new HTTPSnippet(har)
-    snippets.push(...getSnippetsForTargets(targets, snippet, har.comment ? har.comment : undefined))
+    snippets.push(
+      ...getSnippetsForTargets(httpTargets, snippet, har.comment ? har.comment : undefined),
+    )
   }
-
-  if (hars.length === 0) throw new Error(`No HAR for ${method.toUpperCase()} ${path}`)
+  for (const target of schemaTargets) {
+    snippets.push({
+      id: target,
+      title: SCHEMA_TARGETS[target].title,
+      content: generateTypedSnippet(openApi, path, method, target),
+    })
+  }
 
   // use first element since method, url, and description
   // are the same for all elements
@@ -43,6 +59,9 @@ const getEndpointSnippets = (openApi, path, method, targets, values = {}, option
  */
 const getSnippets = (openApi, targets, options = {}) => {
   const endpointHarInfoList = OpenAPIToHar.getAll(openApi, options)
+  // This bulk path only handles httpsnippet targets; schema-codegen targets
+  // need per-operation context and go through getEndpointSnippets instead.
+  const httpTargets = targets.filter((t) => !isSchemaTarget(t))
 
   const results = []
   for (const harInfo of endpointHarInfoList) {
@@ -50,7 +69,7 @@ const getSnippets = (openApi, targets, options = {}) => {
     const snippets = []
     for (const har of harInfo.hars) {
       const snippet = new HTTPSnippet(har)
-      snippets.push(...getSnippetsForTargets(targets, snippet, har.comment))
+      snippets.push(...getSnippetsForTargets(httpTargets, snippet, har.comment))
     }
 
     results.push({

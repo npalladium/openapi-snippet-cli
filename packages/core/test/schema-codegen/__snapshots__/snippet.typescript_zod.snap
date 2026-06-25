@@ -1,0 +1,13 @@
+import { z } from 'zod'
+
+export const Pet = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  tag: z.string().optional(),
+})
+export type Pet = z.infer<typeof Pet>
+
+const response = await fetch('https://petstore.example.com/v1/pets/{petId}', {
+  method: 'GET',
+})
+const data = Pet.parse(await response.json())

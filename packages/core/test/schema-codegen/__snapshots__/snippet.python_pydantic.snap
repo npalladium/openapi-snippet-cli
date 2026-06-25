@@ -1,0 +1,13 @@
+from __future__ import annotations
+from pydantic import BaseModel
+
+
+class Pet(BaseModel):
+    id: int
+    name: str
+    tag: str | None = None
+
+import requests
+
+response = requests.request('GET', 'https://petstore.example.com/v1/pets/{petId}')
+data = Pet.model_validate(response.json())
