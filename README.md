@@ -251,6 +251,48 @@ $ open dist/docs/index.html
 > bundle when splitting; reach for `--inline-redoc` only when you need each page
 > to be independently offline and accept the size.
 
+## Typed schema models (Zod / Valibot / Pydantic)
+
+Alongside the HTTP-request targets (which run through `openapi-snippet`), three
+**schema-codegen** targets emit typed *data models* from `components.schemas`:
+
+| target | output |
+|--------|--------|
+| `typescript_zod` | Zod schemas + inferred types |
+| `typescript_valibot` | Valibot schemas + inferred types |
+| `python_pydantic` | Pydantic v2 models |
+
+These are **opt-in** — a bare run (no `-t`) still emits only HTTP-request
+samples. Request them explicitly:
+
+```sh-session
+$ openapi-snippet schema.yaml -t typescript_zod -e html -o dist/schema.html
+```
+
+Each operation gets a self-contained `x-codeSamples` entry that **inlines the
+response model(s), issues the request, and parses the response through the
+model** (`Pet.parse(...)` / `v.parse(Pet, ...)` / `Pet.model_validate(...)`), so
+it renders in Redoc and is copy-paste runnable.
+
+To also write **canonical, de-duplicated model files** (one module covering the
+whole `components.schemas`), add `--schema-models-dir`:
+
+```sh-session
+$ openapi-snippet schema.yaml -t typescript_zod,python_pydantic \
+    --schema-models-dir dist/models -o dist/schema.yaml
+# writes dist/models/models.zod.ts and dist/models/models.py
+```
+
+The generated code references `zod` / `valibot` / `pydantic` — install whichever
+you use in the consuming project. `--schema-models-dir` writes files, so it
+can't be combined with `--dry-run`.
+
+**Scope / notes (v1):** models are generated from named `components.schemas`
+(an inline, non-`$ref` response schema is synthesized as a one-off model inside
+its snippet). OpenAPI 3.0 quirks (`nullable`, boolean `exclusiveMinimum/Maximum`)
+are normalized to 3.1 semantics. Pydantic is v2 only, and nested *inline* objects
+fall back to `dict[str, Any]` rather than being hoisted to classes.
+
 ## MCP server (`openapi-mcp`)
 
 The `openapi-mcp` CLI (the [`openapi-mcp`](packages/mcp) package)
@@ -287,6 +329,8 @@ Tools exposed:
 | `get_schema` | `name` | a named `components.schemas` entry |
 | `search_endpoints` | `query`, `method?` | substring search over path/operationId/summary |
 | `get_code_snippets` | `path`, `method`, `targets?` | request snippets for an operation (defaults to `shell_curl`) |
+| `generate_models` | `target` | typed models from `components.schemas` (`typescript_zod`, `typescript_valibot`, `python_pydantic`) |
+| `get_typed_snippet` | `path`, `method`, `target` | a self-contained typed request snippet (inline models + request + typed parse) |
 
 ## Exit codes
 
@@ -318,11 +362,12 @@ OPTIONS
       --inline-redoc          with -e html, inline the Redoc bundle for a fully offline page (no CDN)
       --list-targets          print the list of valid --targets values and exit
   -o, --output=output         [default: output.yaml] output file name. Ignored when --dry-run.
+      --schema-models-dir=dir also write canonical model files for schema targets in --targets (typescript_zod->models.zod.ts, typescript_valibot->models.valibot.ts, python_pydantic->models.py) into dir. Cannot be combined with --dry-run.
       --skip-errors           skip operations whose snippet generation fails (warn on stderr) instead of aborting
       --smart-samples         fill un-annotated string fields with realistic values inferred from their names (email->user@example.com, *_id->a uuid, ...) instead of "string"
       --split-by-tag          write a folder with one file per tag (--output is treated as a directory); components are pruned per tag, and -e html also emits an index.html
       --stdin                 read the spec from stdin (auto-detected when no FILE is given and stdin is piped)
-  -t, --targets=targets       target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. Supports languages supported in https://github.com/ErikWittern/openapi-snippet. Defaults to adding snippets for ALL supported languages.
+  -t, --targets=targets       target snippet languages + frameworks. Can be provided multiple times. If inputting language only, defaults to one of the frameworks. HTTP-request targets come from https://github.com/ErikWittern/openapi-snippet; the schema targets (typescript_zod, typescript_valibot, python_pydantic) emit typed models and are opt-in. Defaults to ALL HTTP-request targets.
       --verbose               emit trace-level logging to stderr (equivalent to NODE_DEBUG=openapi-snippet)
   -v, --version               show CLI version
 ```
