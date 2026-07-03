@@ -1,6 +1,6 @@
 {
   "name": "@npalladium/openapi-snippet-core",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Shared library for openapi-snippet: snippet generation, injection, spec loading, and HTML rendering",
   "type": "module",
   "publishConfig": {

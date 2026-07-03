@@ -1,6 +1,6 @@
 {
   "name": "@npalladium/openapi-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "stdio MCP server exposing tools to explore an OpenAPI spec (with code snippets)",
   "type": "module",
   "publishConfig": {
