@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
@@ -177,5 +179,18 @@ describe('mcp command (spawned over stdio)', () => {
     } finally {
       await client.close()
     }
+  })
+
+  it('--version prints the package.json version', () => {
+    const pkgVersion = (
+      JSON.parse(
+        readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+      ) as {
+        version: string
+      }
+    ).version
+    const r = spawnSync('node', [BIN, '--version'], { encoding: 'utf8', timeout: 15000 })
+    assert.equal(r.status, 0)
+    assert.equal(r.stdout.trim(), pkgVersion)
   })
 })

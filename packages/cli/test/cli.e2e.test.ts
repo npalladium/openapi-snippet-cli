@@ -194,10 +194,15 @@ describe('CLI — help and version', () => {
     assert.ok(r.stdout.includes('openapi-snippet') || r.stdout.includes('code snippets'))
   })
 
-  it('--version exits 0 and prints a version number', () => {
+  it('--version exits 0 and prints the package.json version', () => {
+    const pkgVersion = (
+      JSON.parse(readFileSync(new URL('../package.json', import.meta.url).pathname, 'utf8')) as {
+        version: string
+      }
+    ).version
     const r = cli(['--version'])
     assert.equal(r.status, 0)
-    assert.match(r.stdout, /\d+\.\d+\.\d+/)
+    assert.equal(r.stdout.trim(), pkgVersion)
   })
 })
 

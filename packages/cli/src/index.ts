@@ -114,7 +114,7 @@ interface CliFlags {
 
 const pkgVersion = (() => {
   try {
-    const raw = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+    const raw = fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')
     return (JSON.parse(raw) as { version?: string }).version ?? '0.0.0'
   } catch {
     return '0.0.0'
