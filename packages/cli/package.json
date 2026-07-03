@@ -1,8 +1,11 @@
 {
-  "name": "openapi-snippet-cli",
+  "name": "@npalladium/openapi-snippet-cli",
   "version": "0.3.0",
   "description": "Adds openapi snippets using openapi-snippet in redoc style (x-codeSamples)",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "openapi-snippet": "dist/main.js"
   },
@@ -25,7 +28,7 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
-    "@openapi-snippet/core": "workspace:*",
+    "@npalladium/openapi-snippet-core": "workspace:*",
     "@stricli/core": "^1.2.7",
     "js-yaml": "^4.2.0",
     "openapi-types": "^12.1.3"
@@ -38,6 +41,7 @@
     "build:js": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/index.js",
     "build:bin": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --banner:js=\"#!/usr/bin/env node\" --outfile=dist/main.js",
     "build": "pnpm build:js && pnpm build:bin",
+    "prepack": "pnpm build",
     "dev": "tsx src/dev.ts",
     "test": "mocha"
   },

@@ -18,7 +18,7 @@ Adds openapi snippets using `openapi-snippet` module in redoc style (x-codeSampl
 ## Requirements
 
 - Node.js **22** (active LTS) or **24** (latest LTS). Older Node versions are not supported.
-- pnpm 9+.
+- Any package manager to install (npm, pnpm, or yarn). pnpm 9+ is only needed if you build from source.
 
 ## Packages
 
@@ -26,14 +26,51 @@ This is a pnpm monorepo with three packages:
 
 | package | bin | purpose |
 |---------|-----|---------|
-| [`@openapi-snippet/core`](packages/core) | – | shared library: snippet generation, injection, spec loading, HTML rendering |
-| [`openapi-snippet-cli`](packages/cli) | `openapi-snippet` | the snippet CLI (yaml/json/html output) |
-| [`openapi-mcp`](packages/mcp) | `openapi-mcp` | stdio MCP server for exploring a spec |
+| [`@npalladium/openapi-snippet-core`](packages/core) | – | shared library: snippet generation, injection, spec loading, HTML rendering |
+| [`@npalladium/openapi-snippet-cli`](packages/cli) | `openapi-snippet` | the snippet CLI (yaml/json/html output) |
+| [`@npalladium/openapi-mcp`](packages/mcp) | `openapi-mcp` | stdio MCP server for exploring a spec |
 
-## Install from GitHub
+## Install
 
-These packages are **not published to npm**. Install from source: clone, build,
-then link the binaries globally.
+The CLIs are published to npm under the `@npalladium` scope, so no clone is
+needed. The snippet CLI and the MCP server are independent packages: installing
+the snippet CLI does not pull the MCP SDK, and installing the MCP CLI does not
+pull redoc.
+
+### Global install
+
+Install with your package manager of choice; each exposes its short command name
+(`openapi-snippet` / `openapi-mcp`), which is what the rest of this README uses:
+
+```sh-session
+# the snippet CLI (the `openapi-snippet` command)
+$ npm  install -g @npalladium/openapi-snippet-cli
+$ pnpm add     -g @npalladium/openapi-snippet-cli
+$ yarn global add  @npalladium/openapi-snippet-cli
+
+# the MCP server (the `openapi-mcp` command)
+$ npm install -g @npalladium/openapi-mcp
+```
+
+### Run once, without installing
+
+`npx` (npm) and `pnpm dlx` fetch, run, and discard — nothing is installed
+globally. Note these invoke the CLI by its **package** name, not the short
+command:
+
+```sh-session
+$ npx @npalladium/openapi-snippet-cli schema.yaml -o dist/schema.yaml
+$ npx @npalladium/openapi-snippet-cli --list-targets
+
+$ pnpm dlx @npalladium/openapi-snippet-cli schema.yaml -o dist/schema.yaml
+$ pnpm dlx @npalladium/openapi-snippet-cli --list-targets
+
+$ npx @npalladium/openapi-mcp https://api.example.com/openapi.json
+```
+
+### Build from source
+
+For development (or to hack on the packages), work from a checkout:
 
 ```sh-session
 $ git clone https://github.com/npalladium/openapi-snippet-cli.git
@@ -41,48 +78,31 @@ $ cd openapi-snippet-cli
 $ pnpm install
 $ pnpm build      # builds core, then the two CLIs (topological order)
 
-# expose the global commands (each `link --global` runs inside its package)
+# optionally expose the global commands (each `link --global` runs inside its package)
 $ cd packages/cli && pnpm link --global && cd ../..   # the `openapi-snippet` command
 $ cd packages/mcp && pnpm link --global && cd ../..   # the `openapi-mcp` command
 ```
 
-`pnpm link --global` is the reliable path: the binaries keep their dependencies
-external (resolved at runtime), and linking from inside the workspace preserves
-the `@openapi-snippet/core` link and each package's `node_modules`. A bare
-`npm install -g <subdir>` will not work — the `workspace:*` core dependency only
-resolves within the workspace.
-
-The two CLIs are independent: linking the snippet CLI does not pull the MCP SDK,
-and linking the MCP CLI does not pull redoc.
-
-To pick up upstream changes later, `git pull`, `pnpm install`, and `pnpm build`
-again — the global links point at the built `dist/`, so no re-linking is needed.
-
-### Dev (run from source)
+Run the TypeScript source directly through `tsx` — no build step required; edit
+a file and rerun:
 
 ```sh-session
-$ pnpm --filter openapi-snippet-cli dev -- schema.yaml -o dist/schema.yaml
+$ pnpm --filter @npalladium/openapi-snippet-cli dev -- schema.yaml -o dist/schema.yaml
 ```
 
-`dev` runs the TypeScript source directly through `tsx` — no build step
-required. Edit a file, rerun.
-
-### Run the built binaries
+Or run the built binaries by path:
 
 ```sh-session
 $ node packages/cli/dist/main.js schema.yaml -o dist/schema.yaml
 $ node packages/mcp/dist/main.js schema.yaml
 ```
 
-To use the commands anywhere instead of by path, link them globally — see
-[Install from GitHub](#install-from-github) above.
-
 ## Build Pipeline
 
 Run from the repo root; scripts fan out to the packages with `pnpm -r`:
 
 - `pnpm typecheck` — type-checks every package with `tsc --noEmit`.
-- `pnpm build` — builds every package (topological): `@openapi-snippet/core`
+- `pnpm build` — builds every package (topological): `@npalladium/openapi-snippet-core`
   emits its bundle + `.d.ts`; the CLIs bundle their executable (`dist/main.js`,
   with a `#!/usr/bin/env node` shebang) via **esbuild**.
 - `pnpm test` — runs each package's mocha suite (via `tsx`).
@@ -295,7 +315,7 @@ fall back to `dict[str, Any]` rather than being hoisted to classes.
 
 ## MCP server (`openapi-mcp`)
 
-The `openapi-mcp` CLI (the [`openapi-mcp`](packages/mcp) package)
+The `openapi-mcp` CLI (the [`@npalladium/openapi-mcp`](packages/mcp) package)
 runs a [Model Context Protocol](https://modelcontextprotocol.io) server over
 stdio that lets an LLM explore a given OpenAPI spec. Inspired by
 [swagger-json-mcp](https://github.com/LLM-MCP-Servers/swagger-json-mcp), adapted

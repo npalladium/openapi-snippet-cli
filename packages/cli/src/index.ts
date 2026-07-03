@@ -18,7 +18,7 @@ import {
   serializeChunked,
   slugifyTag,
   splitByTag,
-} from '@openapi-snippet/core'
+} from '@npalladium/openapi-snippet-core'
 import {
   buildApplication,
   buildCommand,
@@ -29,7 +29,7 @@ import {
 import yaml from 'js-yaml'
 import type { OpenAPI } from 'openapi-types'
 
-export { CliError, ExitCode } from '@openapi-snippet/core'
+export { CliError, ExitCode } from '@npalladium/openapi-snippet-core'
 
 /**
  * Warn when the no-chunk path would dominate runtime on a large spec.

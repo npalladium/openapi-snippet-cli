@@ -1,5 +1,5 @@
 import * as fs from 'node:fs'
-import { CliError, dereferenceSpec, ExitCode, loadSpec } from '@openapi-snippet/core'
+import { CliError, dereferenceSpec, ExitCode, loadSpec } from '@npalladium/openapi-snippet-core'
 import { buildApplication, buildCommand, type CommandContext, run } from '@stricli/core'
 import { runMcpStdio } from './server.ts'
 

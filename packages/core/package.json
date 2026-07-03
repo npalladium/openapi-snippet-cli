@@ -1,8 +1,11 @@
 {
-  "name": "@openapi-snippet/core",
+  "name": "@npalladium/openapi-snippet-core",
   "version": "0.3.0",
   "description": "Shared library for openapi-snippet: snippet generation, injection, spec loading, and HTML rendering",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -34,6 +37,7 @@
     "build:types": "tsc -b --emitDeclarationOnly && node scripts/fix-dts.mjs",
     "build:js": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/index.js",
     "build": "pnpm build:types && pnpm build:js",
+    "prepack": "pnpm build",
     "test": "mocha"
   },
   "devDependencies": {

@@ -39,9 +39,9 @@ describe('workspace layout', () => {
   })
 
   it('has the three expected packages', () => {
-    assert.equal(pkgOf('core').name, '@openapi-snippet/core')
-    assert.equal(pkgOf('cli').name, 'openapi-snippet-cli')
-    assert.equal(pkgOf('mcp').name, 'openapi-mcp')
+    assert.equal(pkgOf('core').name, '@npalladium/openapi-snippet-core')
+    assert.equal(pkgOf('cli').name, '@npalladium/openapi-snippet-cli')
+    assert.equal(pkgOf('mcp').name, '@npalladium/openapi-mcp')
   })
 })
 
@@ -60,7 +60,7 @@ describe('package binaries and dependencies', () => {
   it('cli and mcp depend on the shared core via the workspace protocol', () => {
     for (const pkg of [cli, mcp]) {
       const deps = pkg.dependencies as Record<string, string>
-      assert.match(deps['@openapi-snippet/core'] ?? '', /^workspace:/)
+      assert.match(deps['@npalladium/openapi-snippet-core'] ?? '', /^workspace:/)
       assert.ok(deps['@stricli/core'], 'expected @stricli/core')
     }
   })

@@ -10,7 +10,7 @@ import {
   HTTP_METHODS,
   isSchemaTarget,
   SCHEMA_TARGET_IDS,
-} from '@openapi-snippet/core'
+} from '@npalladium/openapi-snippet-core'
 import type { OpenAPI } from 'openapi-types'
 
 type AnyRecord = Record<string, unknown>

@@ -20,7 +20,7 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "dev": "pnpm --filter openapi-snippet-cli dev",
+    "dev": "pnpm --filter @npalladium/openapi-snippet-cli dev",
     "verify": "pnpm check && pnpm build && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
