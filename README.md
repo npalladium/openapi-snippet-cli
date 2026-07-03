@@ -49,7 +49,9 @@ $ pnpm add     -g @npalladium/openapi-snippet-cli
 $ yarn global add  @npalladium/openapi-snippet-cli
 
 # the MCP server (the `openapi-mcp` command)
-$ npm install -g @npalladium/openapi-mcp
+$ npm  install -g @npalladium/openapi-mcp
+$ pnpm add     -g @npalladium/openapi-mcp
+$ yarn global add  @npalladium/openapi-mcp
 ```
 
 ### Run once, without installing
