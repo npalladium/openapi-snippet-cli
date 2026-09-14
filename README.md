@@ -154,18 +154,27 @@ installed the CLI globally). The lookup checks both the CLI's own install and
 the current project, so a globally-installed CLI can use a project-local `redoc`.
 If it's missing, the command exits with guidance instead of failing obscurely.
 
+To serve one shared Redoc bundle across several generated pages, pass its public
+URL instead of inlining or loading the default CDN asset:
+
+```sh-session
+$ openapi-snippet schema.yaml -e html --split-by-tag \
+    --redoc-bundle-url /docs/assets/redoc.standalone.js -o dist/docs
+```
+
+`--redoc-bundle-url` and `--inline-redoc` are mutually exclusive.
+
 ## Choosing Targets
 ```sh-session
-$ openapi-snippet schema.yaml -t java -t c -o dist/schema.json
+$ openapi-snippet schema.yaml \
+    -t shell_curl -t python_requests -t javascript_fetch \
+    -o dist/schema.yaml
 ```
 
-The example above should add snippets for `java` and `c` using their default frameworks
+This example emits cURL, Python Requests, and browser Fetch samples. Targets use
+`<language>_<client>` names; for example, `javascript_xhr` selects
+`XMLHttpRequest` while `javascript_fetch` selects the browser Fetch API.
 
-```sh-session
-$ openapi-snippet schema.yaml -t java_okhttp -o dist/schema.json
-```
-
-This should add snippets for 'java` using OkHttp.
 
 ## Discovering available targets
 
@@ -266,12 +275,10 @@ $ open dist/docs/index.html
 - With `-e html`, an `index.html` linking every per-tag page is also written.
 - It can't be combined with `--dry-run` (it writes a folder, not stdout).
 
-> **Note on `--split-by-tag --inline-redoc`:** these work together but rarely
-> belong together. `--inline-redoc` embeds the full ~1 MB Redoc bundle into
-> **every** per-tag page, so a 60-tag spec produces ~60 MB of duplicated bundle
-> — defeating the size win that splitting buys you. Prefer the default (CDN)
-> bundle when splitting; reach for `--inline-redoc` only when you need each page
-> to be independently offline and accept the size.
+> **Note on Redoc assets when splitting:** `--inline-redoc` embeds the full
+> ~1 MB bundle into every page and should be reserved for independently offline
+> files. Prefer `--redoc-bundle-url` when the pages share a host, or omit both
+> options to use the default CDN.
 
 ## Typed schema models (Zod / Valibot / Pydantic)
 

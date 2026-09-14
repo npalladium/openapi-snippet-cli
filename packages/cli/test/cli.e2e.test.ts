@@ -298,6 +298,16 @@ describe('CLI — target filtering', () => {
     assert.equal(samples[0].lang, 'Shell + Curl')
   })
 
+  it('generates browser Fetch snippets', () => {
+    const out = outFile('target-browser-fetch.yaml')
+    const r = cli([specFile(), '-o', out, '-t', 'javascript_fetch'])
+    assert.equal(r.status, 0, r.stderr)
+    const d = readYaml(out)
+    const [sample] = d.paths['/ping'].get['x-codeSamples']
+    assert.equal(sample.lang, 'Javascript + Fetch')
+    assert.match(sample.source, /fetch\(/)
+  })
+
   it('outputs multiple targets when specified multiple times', () => {
     const out = outFile('target-multi.yaml')
     const r = cli([specFile(), '-o', out, '-t', 'shell_curl', '-t', 'node_native'])
@@ -391,6 +401,7 @@ describe('CLI — --list-targets', () => {
     assert.ok(lines.length > 5, `expected many targets, got ${lines.length}`)
     assert.ok(lines.includes('shell_curl'))
     assert.ok(lines.includes('node_native'))
+    assert.ok(lines.includes('javascript_fetch'))
   })
 
   it('ignores the file argument when --list-targets is set', () => {
@@ -788,6 +799,40 @@ describe('CLI — html output', () => {
     // The inlined standalone bundle is large; the page should dwarf the CDN variant.
     assert.ok(html.length > 200_000, `expected an inlined bundle, page was ${html.length} bytes`)
     assert.match(html, /Redoc\.init\(/)
+  })
+
+  it('loads Redoc from --redoc-bundle-url', () => {
+    const out = outFile('docs-shared-redoc.html')
+    const r = cli([
+      specFile(),
+      '-o',
+      out,
+      '-e',
+      'html',
+      '-t',
+      'shell_curl',
+      '--redoc-bundle-url',
+      '/docs/assets/redoc.js',
+    ])
+    assert.equal(r.status, 0, r.stderr)
+    const html = readFileSync(out, 'utf8')
+    assert.match(html, /src="\/docs\/assets\/redoc\.js"/)
+    assert.doesNotMatch(html, /cdn\.redocly\.com/)
+  })
+
+  it('rejects conflicting Redoc bundle options', () => {
+    const r = cli([
+      specFile(),
+      '-o',
+      outFile('docs-conflicting-redoc.html'),
+      '-e',
+      'html',
+      '--inline-redoc',
+      '--redoc-bundle-url',
+      '/docs/assets/redoc.js',
+    ])
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /mutually exclusive/)
   })
 })
 
