@@ -215,6 +215,12 @@ describe('renderHtml', () => {
     assert.ok(html.includes(bundle), 'should embed the bundle source')
   })
 
+  it('loads Redoc from a caller-supplied bundle URL', () => {
+    const html = renderHtml(api, { bundleUrl: '/docs/assets/redoc.js?mode=<shared>' })
+    assert.match(html, /src="\/docs\/assets\/redoc\.js\?mode=&lt;shared&gt;"/)
+    assert.doesNotMatch(html, /cdn\.redocly\.com/)
+  })
+
   it('neutralizes a </script> sequence inside the inlined bundle', () => {
     const bundle = 'var s = "</script><script>evil()";'
     const html = renderHtml(api, { inlineBundle: bundle })

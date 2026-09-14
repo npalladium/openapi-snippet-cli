@@ -243,9 +243,11 @@ function escapeHtml(s: string): string {
 /** Options for {@link renderHtml}. */
 export type RenderHtmlOptions = {
   /** Standalone Redoc bundle source to inline, making the page fully
-   *  self-contained (offline). When omitted, the page loads the bundle from
-   *  {@link REDOC_BUNDLE_URL} at view time. */
+   *  self-contained (offline). Takes precedence over bundleUrl. */
   inlineBundle?: string
+  /** URL from which the generated page loads Redoc. Defaults to
+   *  {@link REDOC_BUNDLE_URL} when neither option is supplied. */
+  bundleUrl?: string
 }
 
 /**
@@ -263,7 +265,7 @@ export function renderHtml(api: OpenAPI.Document, options?: RenderHtmlOptions): 
   const specJson = JSON.stringify(api).replace(/</g, '\\u003c')
   const bundleTag = options?.inlineBundle
     ? `<script>${options.inlineBundle.replace(/<\/(script)/gi, '<\\/$1')}</script>`
-    : `<script src="${REDOC_BUNDLE_URL}"></script>`
+    : `<script src="${escapeHtml(options?.bundleUrl ?? REDOC_BUNDLE_URL)}"></script>`
   return `<!DOCTYPE html>
 <html>
   <head>

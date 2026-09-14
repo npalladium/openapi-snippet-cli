@@ -47,6 +47,7 @@ export const httpTargets = [
   'java_okhttp',
   'java_unirest',
   'javascript_jquery',
+  'javascript_fetch',
   'javascript_xhr',
   'javascript',
   'node_native',
@@ -107,6 +108,7 @@ interface CliFlags {
   readonly chunkSize: number
   readonly skipErrors: boolean
   readonly inlineRedoc: boolean
+  readonly redocBundleUrl?: string
   readonly smartSamples: boolean
   readonly splitByTag: boolean
   readonly schemaModelsDir?: string
@@ -198,11 +200,8 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
     },
   }
   // Chunked YAML injects per chunk inside serializeChunked; everything else
-  // injects once here. Computing it lazily avoids a wasted full injection
-  // (and duplicate onSkip warnings) on the chunked path.
   const useChunked = flags.chunkSize > 0 && ext === 'yaml'
-  const htmlOptions: RenderHtmlOptions | undefined =
-    ext === 'html' && flags.inlineRedoc ? { inlineBundle: loadRedocBundle() } : undefined
+  const htmlOptions = resolveHtmlOptions(flags, ext)
 
   if (flags.splitByTag) {
     if (flags.dryRun) {
@@ -216,6 +215,21 @@ async function execute(proc: NodeJS.Process, flags: CliFlags, file?: string): Pr
   }
 
   writeSingleOutput(proc, api, targets, ext, flags, injectOptions, htmlOptions, useChunked)
+}
+function resolveHtmlOptions(
+  flags: Pick<CliFlags, 'inlineRedoc' | 'redocBundleUrl'>,
+  ext: 'yaml' | 'json' | 'html',
+): RenderHtmlOptions | undefined {
+  if (flags.inlineRedoc && flags.redocBundleUrl) {
+    throw new CliError(
+      '--inline-redoc and --redoc-bundle-url are mutually exclusive.',
+      ExitCode.USER_ERROR,
+    )
+  }
+  if (ext !== 'html') return undefined
+  if (flags.inlineRedoc) return { inlineBundle: loadRedocBundle() }
+  if (flags.redocBundleUrl) return { bundleUrl: flags.redocBundleUrl }
+  return undefined
 }
 
 /** Dry-run to stdout, or write a single output file (chunked YAML or one-shot). */
@@ -492,6 +506,14 @@ const command = buildCommand<CliFlags, [file?: string], LocalContext>({
         kind: 'boolean',
         brief: 'with -e html, inline the Redoc bundle for a fully offline page (no CDN)',
         default: false,
+      },
+      redocBundleUrl: {
+        kind: 'parsed',
+        parse: String,
+        optional: true,
+        brief:
+          'with -e html, load Redoc from this URL instead of the default CDN; ' +
+          'cannot be combined with --inline-redoc',
       },
       smartSamples: {
         kind: 'boolean',
